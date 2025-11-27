@@ -15,18 +15,40 @@ jobs:
     strategy:
       matrix:
         include:
+          # Ubuntu/Debian - dynamically linked
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_name: rustipedia-linux-x86_64.tar.gz
             asset_name: rustipedia-linux-x86_64.tar.gz
+            build_type: ubuntu
+          
+          # Linux - statically linked (works on all distros)
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact_name: rustipedia-linux-x86_64-static.tar.gz
+            asset_name: rustipedia-linux-x86_64-static.tar.gz
+            build_type: musl
+          
+          # Fedora/RHEL/CentOS - RPM package
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: rustipedia-linux-x86_64.rpm
+            asset_name: rustipedia-linux-x86_64.rpm
+            build_type: fedora
+          
+          # Windows
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_name: rustipedia.msi
             asset_name: rustipedia-windows-x86_64.msi
+            build_type: windows
+          
+          # macOS Intel
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact_name: rustipedia-macos-x86_64.tar.gz
             asset_name: rustipedia-macos-x86_64.tar.gz
+            build_type: macos
 
     steps:
       - name: Checkout code
@@ -39,20 +61,108 @@ jobs:
 
       # --- Windows Specific ---
       - name: Install WiX (Windows)
-        if: matrix.os == 'windows-latest'
+        if: matrix.build_type == 'windows'
         run: cargo install cargo-wix
 
       - name: Build MSI (Windows)
-        if: matrix.os == 'windows-latest'
+        if: matrix.build_type == 'windows'
         run: cargo wix --nocapture
 
-      # --- Linux/Mac Specific ---
-      - name: Build Release (Unix)
-        if: matrix.os != 'windows-latest'
+      # --- Linux musl (static) ---
+      - name: Install musl tools
+        if: matrix.build_type == 'musl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          rustup target add x86_64-unknown-linux-musl
+
+      - name: Build static binaries (musl)
+        if: matrix.build_type == 'musl'
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Package Linux
-        if: matrix.os == 'ubuntu-latest'
+      # --- Fedora RPM ---
+      - name: Install RPM tools
+        if: matrix.build_type == 'fedora'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
+
+      - name: Build for Fedora
+        if: matrix.build_type == 'fedora'
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Create RPM package
+        if: matrix.build_type == 'fedora'
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          
+          mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+          mkdir -p rpmbuild/BUILD/usr/local/bin
+          
+          cp target/${{ matrix.target }}/release/rustipedia-download rpmbuild/BUILD/usr/local/bin/
+          cp target/${{ matrix.target }}/release/rustipedia-serve rpmbuild/BUILD/usr/local/bin/
+          cp target/${{ matrix.target }}/release/rustipedia-setup rpmbuild/BUILD/usr/local/bin/
+          cp target/${{ matrix.target }}/release/rustipedia-link-validator rpmbuild/BUILD/usr/local/bin/
+          
+          cat > rpmbuild/SPECS/rustipedia.spec << EOF
+          Name:           rustipedia
+          Version:        ${VERSION}
+          Release:        1%{?dist}
+          Summary:        Your Local Wikipedia Server
+          License:        MIT
+          URL:            https://github.com/ChiefBoyardee/rustipedia
+          
+          %description
+          Rustipedia lets you download and host Wikipedia locally on your computer.
+          Browse millions of articles with full-text search, all without an internet connection.
+          
+          %install
+          mkdir -p %{buildroot}/usr/local/bin
+          cp %{_builddir}/usr/local/bin/* %{buildroot}/usr/local/bin/
+          
+          %files
+          /usr/local/bin/rustipedia-download
+          /usr/local/bin/rustipedia-serve
+          /usr/local/bin/rustipedia-setup
+          /usr/local/bin/rustipedia-link-validator
+          
+          %changelog
+          * $(date "+%a %b %d %Y") GitHub Actions <noreply@github.com> - ${VERSION}-1
+          - Automated build from tag ${{ github.ref_name }}
+          EOF
+          
+          rpmbuild --define "_topdir $(pwd)/rpmbuild" -bb rpmbuild/SPECS/rustipedia.spec
+          cp rpmbuild/RPMS/x86_64/*.rpm ${{ matrix.artifact_name }}
+
+      # --- Ubuntu/Debian Build ---
+      - name: Build Release (Ubuntu)
+        if: matrix.build_type == 'ubuntu'
+        run: cargo build --release --target ${{ matrix.target }}
+
+      # --- macOS Build ---
+      - name: Build Release (macOS)
+        if: matrix.build_type == 'macos'
+        run: cargo build --release --target ${{ matrix.target }}
+
+      # --- Package Ubuntu ---
+      - name: Package Ubuntu
+        if: matrix.build_type == 'ubuntu'
+        run: |
+          mkdir dist
+          cp target/${{ matrix.target }}/release/rustipedia-download dist/
+          cp target/${{ matrix.target }}/release/rustipedia-serve dist/
+          cp target/${{ matrix.target }}/release/rustipedia-setup dist/
+          cp target/${{ matrix.target }}/release/rustipedia-link-validator dist/
+          cp install.sh dist/
+          cp README.md dist/
+          cp LICENSE dist/ || true
+          cd dist
+          tar -czf ../${{ matrix.artifact_name }} .
+
+      # --- Package musl (static) ---
+      - name: Package musl
+        if: matrix.build_type == 'musl'
         run: |
           mkdir dist
           cp target/${{ matrix.target }}/release/rustipedia-download dist/
@@ -66,7 +176,7 @@ jobs:
           tar -czf ../${{ matrix.artifact_name }} .
 
       - name: Package macOS
-        if: matrix.os == 'macos-latest'
+        if: matrix.build_type == 'macos'
         run: |
           mkdir dist
           cp target/${{ matrix.target }}/release/rustipedia-download dist/
