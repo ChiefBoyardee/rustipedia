@@ -27,10 +27,16 @@ use axum::{
     response::{Html, IntoResponse, Response},
     routing::get,
     Router,
+    http::{HeaderName, HeaderValue},
 };
 use clap::Parser;
 use tokio::sync::RwLock;
 use tracing_subscriber::EnvFilter;
+use tower_http::set_header::SetResponseHeaderLayer;
+use tower_http::timeout::TimeoutLayer;
+use tower_http::cors::{CorsLayer, Any};
+use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
+use rand::Rng;
 
 use rustipedia::{Article, SearchIndex, WikiLanguage};
 
@@ -245,6 +251,46 @@ async fn main() -> Result<()> {
         .route("/api/search", get(api_search))
         .with_state(shared_state);
 
+    // Rate Limiting Configuration
+    let governor_conf = Arc::new(
+        GovernorConfigBuilder::default()
+            .per_second(50) // 50 requests per second
+            .burst_size(100)
+            .finish()
+            .unwrap(),
+    );
+
+    // CSP Header
+    // Note: 'unsafe-inline' is currently required for the inline styles in base_html.
+    // Ideally we should move to a CSS file or use nonces.
+    let csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:;";
+
+    let app = app
+        .layer(GovernorLayer { config: governor_conf })
+        .layer(SetResponseHeaderLayer::overriding(
+            HeaderName::from_static("content-security-policy"),
+            HeaderValue::from_str(csp).unwrap(),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            HeaderName::from_static("x-content-type-options"),
+            HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            HeaderName::from_static("x-frame-options"),
+            HeaderValue::from_static("DENY"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            HeaderName::from_static("x-xss-protection"),
+            HeaderValue::from_static("1; mode=block"),
+        ))
+        .layer(TimeoutLayer::new(std::time::Duration::from_secs(30)))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any) // For a local tool, Any is acceptable, but in prod we'd restrict.
+                .allow_methods(Any)
+                .allow_headers(Any)
+        );
+
     let addr = format!("{}:{}", cli.host, cli.port);
     
     println!();
@@ -258,7 +304,7 @@ async fn main() -> Result<()> {
     println!("Press Ctrl+C to stop the server");
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>()).await?;
 
     Ok(())
 }
@@ -812,6 +858,11 @@ async fn search(
     if query.is_empty() {
         return Html(base_html("Search", "<p>Enter a search query</p>", &state));
     }
+
+    // Security: Validate search query length
+    if query.len() > 200 {
+        return Html(base_html("Search", "<p>Search query too long (max 200 characters)</p>", &state));
+    }
     
     let results = if let Some(ref index) = state.search_index {
         // Use full-text search
@@ -952,9 +1003,9 @@ async fn random_article(State(state): State<SharedState>) -> Response {
         return (StatusCode::NOT_FOUND, "No articles available").into_response();
     }
     
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as usize;
-    let idx = seed % state.all_titles.len();
+    // Security: Use cryptographically secure RNG
+    let mut rng = rand::rng();
+    let idx = rng.random_range(0..state.all_titles.len());
     let (id, _) = &state.all_titles[idx];
     
     axum::response::Redirect::to(&format!("/article/{}", id)).into_response()

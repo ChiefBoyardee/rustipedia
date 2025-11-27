@@ -100,6 +100,15 @@ impl WikiParser {
 
 
 
+    /// Escape HTML special characters
+    fn html_escape(s: &str) -> String {
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&#x27;")
+    }
+
     /// Clean Wikipedia markup to plain text
     pub fn clean_wiki_markup(text: &str) -> String {
         Self::clean_wiki_markup_with_filter(text, None)
@@ -243,12 +252,12 @@ impl WikiParser {
             if let Some(valid) = valid_titles {
                 let normalized = target.to_lowercase().replace('_', " ");
                 if valid.contains(&normalized) {
-                    format!("<a href=\"/wiki/{}\">{}</a>", target, text)
+                    format!("<a href=\"/wiki/{}\">{}</a>", urlencoding::encode(target), Self::html_escape(text))
                 } else {
-                    text.to_string()
+                    Self::html_escape(text)
                 }
             } else {
-                format!("<a href=\"/wiki/{}\">{}</a>", target, text)
+                format!("<a href=\"/wiki/{}\">{}</a>", urlencoding::encode(target), Self::html_escape(text))
             }
         }).to_string();
 
@@ -259,12 +268,12 @@ impl WikiParser {
             if let Some(valid) = valid_titles {
                 let normalized = target.to_lowercase().replace('_', " ");
                 if valid.contains(&normalized) {
-                    format!("<a href=\"/wiki/{}\">{}</a>", target, target)
+                    format!("<a href=\"/wiki/{}\">{}</a>", urlencoding::encode(target), Self::html_escape(target))
                 } else {
-                    target.to_string()
+                    Self::html_escape(target)
                 }
             } else {
-                format!("<a href=\"/wiki/{}\">{}</a>", target, target)
+                format!("<a href=\"/wiki/{}\">{}</a>", urlencoding::encode(target), Self::html_escape(target))
             }
         }).to_string();
 
@@ -372,6 +381,21 @@ mod tests {
         let text = "Some text [[Category:Science]] and [[Category:Physics]] more text.";
         let cats = WikiParser::extract_categories(text);
         assert_eq!(cats, vec!["Science", "Physics"]);
+    }
+
+    #[test]
+    fn test_clean_wiki_markup_xss() {
+        // Test 1: HTML tags should be stripped by HTML_RE
+        let input = "[[<script>alert(1)</script>]]";
+        let result = WikiParser::clean_wiki_markup(input);
+        assert!(!result.contains("<script>"));
+        assert!(!result.contains("&lt;script&gt;")); // It's stripped, not escaped
+        assert!(result.contains("alert(1)"));
+
+        // Test 2: Special chars in text should be escaped
+        let input = "[[Link|Text \" with quotes]]";
+        let result = WikiParser::clean_wiki_markup(input);
+        assert!(result.contains("Text &quot; with quotes"));
     }
 }
 
