@@ -369,7 +369,7 @@ impl WikiDownloader {
             }
 
             // Update progress (approximate based on buffer position)
-            pb.set_position(xml_reader.buffer_position() as u64);
+            pb.set_position(xml_reader.buffer_position());
             buf.clear();
         }
 

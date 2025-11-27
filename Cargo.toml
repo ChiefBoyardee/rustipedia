@@ -1,14 +1,15 @@
 [package]
 name = "rustipedia"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
-description = "Rustipedia: Your Local Wikipedia Server"
-authors = ["Your Name <your.email@example.com>"]
+description = "Download and host Wikipedia locally with full-text search - Your personal offline Wikipedia server"
+authors = ["ChiefBoyardee"]
 license = "MIT"
 repository = "https://github.com/ChiefBoyardee/rustipedia"
-keywords = ["wikipedia", "download", "offline", "archive", "server", "rustipedia"]
+keywords = ["wikipedia", "offline", "search", "wiki", "encyclopedia"]
 categories = ["command-line-utilities", "web-programming"]
 readme = "README.md"
+homepage = "https://github.com/ChiefBoyardee/rustipedia"
 
 [[bin]]
 name = "rustipedia-download"

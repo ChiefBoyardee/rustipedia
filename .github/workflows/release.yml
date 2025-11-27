@@ -22,6 +22,13 @@ jobs:
             asset_name: rustipedia-linux-x86_64.tar.gz
             build_type: ubuntu
           
+          # Debian package
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: rustipedia_amd64.deb
+            asset_name: rustipedia_amd64.deb
+            build_type: debian
+          
           # Linux - statically linked (works on all distros)
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
@@ -139,6 +146,46 @@ jobs:
       - name: Build Release (Ubuntu)
         if: matrix.build_type == 'ubuntu'
         run: cargo build --release --target ${{ matrix.target }}
+
+      # --- Debian Package ---
+      - name: Build for Debian
+        if: matrix.build_type == 'debian'
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Create Debian package
+        if: matrix.build_type == 'debian'
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          
+          mkdir -p debian/usr/local/bin
+          mkdir -p debian/DEBIAN
+          
+          cp target/${{ matrix.target }}/release/rustipedia-download debian/usr/local/bin/
+          cp target/${{ matrix.target }}/release/rustipedia-serve debian/usr/local/bin/
+          cp target/${{ matrix.target }}/release/rustipedia-setup debian/usr/local/bin/
+          cp target/${{ matrix.target }}/release/rustipedia-link-validator debian/usr/local/bin/
+          
+          cat > debian/DEBIAN/control << EOF
+          Package: rustipedia
+          Version: ${VERSION}
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: ChiefBoyardee <noreply@github.com>
+          Description: Your Local Wikipedia Server
+           Download and host Wikipedia locally on your computer.
+           Browse millions of articles with full-text search, all without an internet connection.
+           .
+           This package includes:
+            - rustipedia-download: Download Wikipedia dumps
+            - rustipedia-serve: Web server for browsing
+            - rustipedia-setup: Interactive setup wizard
+            - rustipedia-link-validator: Link validation tool
+          Homepage: https://github.com/ChiefBoyardee/rustipedia
+          EOF
+          
+          dpkg-deb --build debian ${{ matrix.artifact_name }}
 
       # --- macOS Build ---
       - name: Build Release (macOS)

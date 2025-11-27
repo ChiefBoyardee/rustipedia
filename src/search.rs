@@ -109,14 +109,30 @@ impl SearchIndex {
 
     /// Build index from JSONL file
     pub fn build_from_jsonl(&self, jsonl_path: impl AsRef<Path>) -> Result<u64> {
+        use indicatif::{ProgressBar, ProgressStyle};
+        
         let file = File::open(jsonl_path.as_ref())?;
+        let file_size = file.metadata()?.len();
         let reader = BufReader::new(file);
+
+        // Create progress bar
+        let pb = ProgressBar::new(file_size);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
+                .unwrap()
+                .progress_chars("#>-")
+        );
+        pb.set_message("Building search index...");
 
         let mut writer = self.index.writer(100_000_000)?; // 100MB heap
         let mut count = 0u64;
+        let mut bytes_read = 0u64;
 
         for line in reader.lines() {
             let line = line?;
+            bytes_read += line.len() as u64 + 1; // +1 for newline
+            
             if line.is_empty() {
                 continue;
             }
@@ -127,14 +143,18 @@ impl SearchIndex {
             self.add_article_to_writer(&mut writer, &article)?;
             count += 1;
 
+            if count % 1000 == 0 {
+                pb.set_position(bytes_read);
+                pb.set_message(format!("Indexed {} articles", count));
+            }
+
             if count % 10000 == 0 {
-                tracing::info!("Indexed {} articles...", count);
                 writer.commit()?;
             }
         }
 
         writer.commit()?;
-        tracing::info!("Indexed {} articles total", count);
+        pb.finish_with_message(format!("✓ Indexed {} articles", count));
 
         Ok(count)
     }

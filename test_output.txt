@@ -1,0 +1,35 @@
+warning: unused import: `std::path::Path`
+  --> src\downloader.rs:12:5
+   |
+12 | use std::path::Path;
+   |     ^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: `rustipedia` (lib test) generated 1 warning (run `cargo fix --lib -p rustipedia --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.33s
+     Running unittests src\lib.rs (target\debug\deps\rustipedia-dedd863b6e45eba5.exe)
+
+running 6 tests
+test parser::tests::test_is_content_article ... ok
+test parser::tests::test_is_redirect ... ok
+test parser::tests::test_extract_redirect_target ... ok
+test parser::tests::test_extract_categories ... ok
+test parser::tests::test_clean_wiki_markup_links ... ok
+test parser::tests::test_clean_wiki_markup_xss ... FAILED
+
+failures:
+
+---- parser::tests::test_clean_wiki_markup_xss stdout ----
+
+thread 'parser::tests::test_clean_wiki_markup_xss' panicked at src\parser.rs:390:9:
+assertion failed: result.contains("&lt;script&gt;")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    parser::tests::test_clean_wiki_markup_xss
+
+test result: FAILED. 5 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `--lib`
