@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: wiki-download-linux-x86_64.tar.gz
+            asset_name: wiki-download-linux-x86_64.tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: wiki-download.msi
+            asset_name: wiki-download-windows-x86_64.msi
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: wiki-download-macos-x86_64.tar.gz
+            asset_name: wiki-download-macos-x86_64.tar.gz
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # --- Windows Specific ---
+      - name: Install WiX (Windows)
+        if: matrix.os == 'windows-latest'
+        run: cargo install cargo-wix
+
+      - name: Build MSI (Windows)
+        if: matrix.os == 'windows-latest'
+        run: cargo wix --nocapture
+
+      # --- Linux/Mac Specific ---
+      - name: Build Release (Unix)
+        if: matrix.os != 'windows-latest'
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package Linux
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          mkdir dist
+          cp target/${{ matrix.target }}/release/wiki-download dist/
+          cp target/${{ matrix.target }}/release/wiki-serve dist/
+          cp target/${{ matrix.target }}/release/wiki-setup dist/
+          cp install.sh dist/
+          cd dist
+          tar -czf ../${{ matrix.artifact_name }} .
+
+      - name: Package macOS
+        if: matrix.os == 'macos-latest'
+        run: |
+          mkdir dist
+          cp target/${{ matrix.target }}/release/wiki-download dist/
+          cp target/${{ matrix.target }}/release/wiki-serve dist/
+          cp target/${{ matrix.target }}/release/wiki-setup dist/
+          cp install_mac.sh dist/
+          cd dist
+          tar -czf ../${{ matrix.artifact_name }} .
+
+      # --- Upload Release ---
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            ${{ matrix.artifact_name }}
+            target/wix/*.msi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

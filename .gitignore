@@ -1,0 +1,18 @@
+# Build artifacts
+/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Downloaded data (user should keep their own copies)
+/wikipedia/
+*.bz2
+*.xml
+
+# OS files
+.DS_Store
+Thumbs.db
+

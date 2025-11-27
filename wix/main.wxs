@@ -1,0 +1,151 @@
+<?xml version='1.0' encoding='windows-1252'?>
+<!--
+  Copyright (C) 2017 Christopher R. Field.
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<!--
+  Please do not remove these pre-processor If-Else blocks. These are used with
+  the `cargo wix` subcommand to automatically determine the installation
+  destination for 32-bit versus 64-bit installers. Removal of these lines will
+  cause installation errors.
+-->
+<?if $(var.Platform) = x64 ?>
+    <?define Win64 = "yes" ?>
+    <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
+<?else ?>
+  <?define Win64 = "no" ?>
+  <?define PlatformProgramFilesFolder = "ProgramFilesFolder" ?>
+<?endif ?>
+
+<Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
+
+    <Product
+        Id='*'
+        Name='Wiki Download'
+        UpgradeCode='C80572F3-4EA9-4122-A69F-4C9A20110123'
+        Manufacturer='Wiki Download Team'
+        Language='1033'
+        Codepage='1252'
+        Version='$(var.Version)'>
+
+        <Package Id='*'
+            Keywords='Installer'
+            Description='Local Wikipedia Server'
+            Manufacturer='Wiki Download Team'
+            InstallerVersion='450'
+            Languages='1033'
+            Compressed='yes'
+            InstallScope='perMachine'
+            SummaryCodepage='1252'
+            Platform='$(var.Platform)'/>
+
+        <MajorUpgrade
+            Schedule='afterInstallInitialize'
+            DowngradeErrorMessage='A newer version of [ProductName] is already installed. Setup will now exit.'/>
+
+        <Media Id='1' Cabinet='media1.cab' EmbedCab='yes' DiskPrompt='CD-ROM #1'/>
+        <Property Id='DiskPrompt' Value='Wiki Download Installation [1]'/>
+
+        <Directory Id='TARGETDIR' Name='SourceDir'>
+            <Directory Id='$(var.PlatformProgramFilesFolder)' Name='PFiles'>
+                <Directory Id='APPLICATIONFOLDER' Name='Wiki Download'>
+                    
+                    <!-- Binaries -->
+                    <Component Id='binary0' Guid='*' Win64='$(var.Win64)'>
+                        <File
+                            Id='exe0'
+                            Name='wiki-serve.exe'
+                            DiskId='1'
+                            Source='target\release\wiki-serve.exe'
+                            KeyPath='yes'/>
+                    </Component>
+                    <Component Id='binary1' Guid='*' Win64='$(var.Win64)'>
+                        <File
+                            Id='exe1'
+                            Name='wiki-download.exe'
+                            DiskId='1'
+                            Source='target\release\wiki-download.exe'
+                            KeyPath='yes'/>
+                    </Component>
+                    <Component Id='binary2' Guid='*' Win64='$(var.Win64)'>
+                        <File
+                            Id='exe2'
+                            Name='wiki-setup.exe'
+                            DiskId='1'
+                            Source='target\release\wiki-setup.exe'
+                            KeyPath='yes'/>
+                    </Component>
+
+                    <!-- Add to PATH -->
+                    <Component Id='Path' Guid='74100918-6576-4702-8610-185011012345' KeyPath='yes' Win64='$(var.Win64)'>
+                        <Environment
+                            Id='PATH'
+                            Name='PATH'
+                            Value='[APPLICATIONFOLDER]'
+                            Permanent='no'
+                            Part='last'
+                            Action='set'
+                            System='yes'/>
+                    </Component>
+                </Directory>
+            </Directory>
+        </Directory>
+
+        <Feature
+            Id='Binaries'
+            Title='Application'
+            Description='Installs all binaries and the setup tool.'
+            Level='1'
+            ConfigurableDirectory='APPLICATIONFOLDER'
+            AllowAdvertise='no'
+            Display='expand'
+            Absent='disallow'>
+            
+            <ComponentRef Id='binary0'/>
+            <ComponentRef Id='binary1'/>
+            <ComponentRef Id='binary2'/>
+            <ComponentRef Id='Path'/>
+        </Feature>
+
+        <SetProperty Id='ARPINSTALLLOCATION' Value='[APPLICATIONFOLDER]' After='CostFinalize'/>
+
+        
+        <!--
+          Uncomment the following `Icon` and `Property` tags to change the product icon.
+          The product icon is the graphic that appears in the Add/Remove Control Panel.
+        -->
+        <!-- <Icon Id='ProductICO' SourceFile='wix\Product.ico'/> -->
+        <!-- <Property Id='ARPPRODUCTICON' Value='ProductICO' /> -->
+
+        <Property Id='ARPHELPLINK' Value='https://github.com/yourusername/wiki_download'/>
+        
+        <UI>
+            <UIRef Id='WixUI_InstallDir'/>
+            <Publish Dialog='ExitDialog'
+                Control='Finish' 
+                Event='DoAction' 
+                Value='LaunchApplication'>WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed</Publish>
+        </UI>
+        
+        <Property Id='WIXUI_INSTALLDIR' Value='APPLICATIONFOLDER'/>
+        <Property Id='WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT' Value='Launch Setup Wizard' />
+        <Property Id='WIXUI_EXITDIALOGOPTIONALCHECKBOX' Value='1' />
+
+        <Property Id='WixShellExecTarget' Value='[#exe2]' />
+        <CustomAction Id='LaunchApplication' BinaryKey='WixCA' DllEntry='WixShellExec' Impersonate='yes' />
+
+    </Product>
+
+</Wix>
