@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Wiki Download Installer for macOS
+# Rustipedia Installer for macOS
 
 echo "╔══════════════════════════════════════════════════════════════════╗"
 echo "║                     🛠️  WIKI INSTALLER                             ║"

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Wiki Download Installer for Linux
+# Rustipedia Installer for Linux
 
 echo "╔══════════════════════════════════════════════════════════════════╗"
 echo "║                     🛠️  WIKI INSTALLER                             ║"

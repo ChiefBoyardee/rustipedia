@@ -1,4 +1,4 @@
-# 📚 Wiki Download
+# 📚 Rustipedia
 
 **Download and serve your own local copy of Wikipedia.**
 
@@ -21,8 +21,8 @@ A fast, user-friendly Rust tool to download Wikipedia dumps directly from Wikime
 
 ```bash
 # Clone and build
-git clone https://github.com/yourusername/wiki_download
-cd wiki_download
+git clone https://github.com/ChiefBoyardee/rustipedia
+cd rustipedia
 cargo build --release
 
 # Or install directly
@@ -34,26 +34,26 @@ cargo install --path .
 ```bash
 # Download Simple English Wikipedia (~300MB, ~200K articles)
 # Perfect for testing!
-wiki-download --lang simple
+rustipedia-download --lang simple
 
 # Download full English Wikipedia (~22GB, ~6.7M articles)
 # Warning: This takes several hours!
-wiki-download --lang en
+rustipedia-download --lang en
 
 # Download German Wikipedia
-wiki-download --lang de --output ./german-wiki
+rustipedia-download --lang de --output ./german-wiki
 ```
 
 ### Serve Locally
 
 ```bash
 # Start the web server
-wiki-serve
+rustipedia-serve
 
 # Open http://localhost:8080 in your browser!
 
 # Custom port and data directory
-wiki-serve --port 3000 --data ./my-wiki
+rustipedia-serve --port 3000 --data ./my-wiki
 ```
 
 ## 📖 Usage
@@ -61,7 +61,7 @@ wiki-serve --port 3000 --data ./my-wiki
 ### Download Command
 
 ```
-wiki-download [OPTIONS] [COMMAND]
+rustipedia-download [OPTIONS] [COMMAND]
 
 Commands:
   list      List all available Wikipedia languages
@@ -86,7 +86,7 @@ Options:
 ### Serve Command
 
 ```
-wiki-serve [OPTIONS]
+rustipedia-serve [OPTIONS]
 
 Options:
   -d, --data <DIR>    Directory containing Wikipedia data [default: wikipedia]
@@ -159,15 +159,15 @@ Start with Simple English Wikipedia (`--lang simple`). It's only ~300MB and down
 ### For Low Memory Systems
 The streaming parser is memory-efficient, but building the search index needs RAM. If you're low on memory:
 ```bash
-wiki-download --lang simple --build-index=false
+rustipedia-download --lang simple --build-index=false
 # Then build index separately when you have memory available
-wiki-download index ./wikipedia
+rustipedia-download index ./wikipedia
 ```
 
 ### Network Access
 By default, the server only listens on localhost. To access from other devices:
 ```bash
-wiki-serve --host 0.0.0.0 --port 8080
+rustipedia-serve --host 0.0.0.0 --port 8080
 ```
 Then access via `http://your-ip:8080`
 
