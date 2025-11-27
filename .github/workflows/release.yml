@@ -58,7 +58,10 @@ jobs:
           cp target/${{ matrix.target }}/release/rustipedia-download dist/
           cp target/${{ matrix.target }}/release/rustipedia-serve dist/
           cp target/${{ matrix.target }}/release/rustipedia-setup dist/
+          cp target/${{ matrix.target }}/release/rustipedia-link-validator dist/
           cp install.sh dist/
+          cp README.md dist/
+          cp LICENSE dist/ || true
           cd dist
           tar -czf ../${{ matrix.artifact_name }} .
 
@@ -69,7 +72,10 @@ jobs:
           cp target/${{ matrix.target }}/release/rustipedia-download dist/
           cp target/${{ matrix.target }}/release/rustipedia-serve dist/
           cp target/${{ matrix.target }}/release/rustipedia-setup dist/
+          cp target/${{ matrix.target }}/release/rustipedia-link-validator dist/
           cp install_mac.sh dist/
+          cp README.md dist/
+          cp LICENSE dist/ || true
           cd dist
           tar -czf ../${{ matrix.artifact_name }} .
 
