@@ -16,42 +16,48 @@ jobs:
       matrix:
         include:
           # Ubuntu/Debian - dynamically linked
-          - os: ubuntu-latest
+          - name: Ubuntu/Debian (tar.gz)
+            os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_name: rustipedia-linux-x86_64.tar.gz
             asset_name: rustipedia-linux-x86_64.tar.gz
             build_type: ubuntu
           
           # Debian package
-          - os: ubuntu-latest
+          - name: Debian Package (.deb)
+            os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_name: rustipedia_amd64.deb
             asset_name: rustipedia_amd64.deb
             build_type: debian
           
           # Linux - statically linked (works on all distros)
-          - os: ubuntu-latest
+          - name: Linux Static (musl)
+            os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             artifact_name: rustipedia-linux-x86_64-static.tar.gz
             asset_name: rustipedia-linux-x86_64-static.tar.gz
             build_type: musl
           
           # Fedora/RHEL/CentOS - RPM package
-          - os: ubuntu-latest
+          - name: Fedora/RHEL (.rpm)
+            os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_name: rustipedia-linux-x86_64.rpm
             asset_name: rustipedia-linux-x86_64.rpm
             build_type: fedora
           
           # Windows
-          - os: windows-latest
+          - name: Windows (.msi)
+            os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_name: rustipedia.msi
             asset_name: rustipedia-windows-x86_64.msi
             build_type: windows
           
           # macOS Intel
-          - os: macos-latest
+          - name: macOS Intel
+            os: macos-latest
             target: x86_64-apple-darwin
             artifact_name: rustipedia-macos-x86_64.tar.gz
             asset_name: rustipedia-macos-x86_64.tar.gz
@@ -76,16 +82,26 @@ jobs:
         run: cargo wix --nocapture
 
       # --- Linux musl (static) ---
-      - name: Install musl tools
+      - name: Install musl tools and OpenSSL
         if: matrix.build_type == 'musl'
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools
+          sudo apt-get install -y musl-tools musl-dev
           rustup target add x86_64-unknown-linux-musl
+          
+          # Install OpenSSL for musl
+          sudo apt-get install -y libssl-dev pkg-config
+          
+          # Use vendored OpenSSL for musl to avoid cross-compilation issues
+          echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
 
       - name: Build static binaries (musl)
         if: matrix.build_type == 'musl'
-        run: cargo build --release --target ${{ matrix.target }}
+        env:
+          RUSTFLAGS: '-C target-feature=+crt-static'
+        run: cargo build --release --target ${{ matrix.target }} --features vendored
 
       # --- Fedora RPM ---
       - name: Install RPM tools
