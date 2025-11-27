@@ -1,33 +1,33 @@
 [package]
-name = "wiki_download"
+name = "rustipedia"
 version = "0.1.0"
 edition = "2021"
-description = "Download and serve your own local copy of Wikipedia"
+description = "Rustipedia: Your Local Wikipedia Server"
 authors = ["Your Name <your.email@example.com>"]
 license = "MIT"
-repository = "https://github.com/yourusername/wiki_download"
-keywords = ["wikipedia", "download", "offline", "archive", "server"]
+repository = "https://github.com/ChiefBoyardee/rustipedia"
+keywords = ["wikipedia", "download", "offline", "archive", "server", "rustipedia"]
 categories = ["command-line-utilities", "web-programming"]
 readme = "README.md"
 
 [[bin]]
-name = "wiki-download"
+name = "rustipedia-download"
 path = "src/bin/download.rs"
 
 [[bin]]
-name = "wiki-serve"
+name = "rustipedia-serve"
 path = "src/bin/serve.rs"
 
 [[bin]]
-name = "wiki-link-validator"
+name = "rustipedia-link-validator"
 path = "src/bin/validate_links.rs"
 
 [[bin]]
-name = "wiki-setup"
+name = "rustipedia-setup"
 path = "src/bin/setup.rs"
 
 [lib]
-name = "wiki_download"
+name = "rustipedia"
 path = "src/lib.rs"
 
 [dependencies]

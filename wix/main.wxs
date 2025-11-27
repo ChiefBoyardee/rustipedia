@@ -33,17 +33,17 @@
 
     <Product
         Id='*'
-        Name='Wiki Download'
+        Name='Rustipedia'
         UpgradeCode='C80572F3-4EA9-4122-A69F-4C9A20110123'
-        Manufacturer='Wiki Download Team'
+        Manufacturer='Rustipedia Contributors'
         Language='1033'
         Codepage='1252'
         Version='$(var.Version)'>
 
         <Package Id='*'
             Keywords='Installer'
-            Description='Local Wikipedia Server'
-            Manufacturer='Wiki Download Team'
+            Description='Rustipedia: Local Wikipedia Server'
+            Manufacturer='Rustipedia Contributors'
             InstallerVersion='450'
             Languages='1033'
             Compressed='yes'
@@ -56,35 +56,43 @@
             DowngradeErrorMessage='A newer version of [ProductName] is already installed. Setup will now exit.'/>
 
         <Media Id='1' Cabinet='media1.cab' EmbedCab='yes' DiskPrompt='CD-ROM #1'/>
-        <Property Id='DiskPrompt' Value='Wiki Download Installation [1]'/>
+        <Property Id='DiskPrompt' Value='Rustipedia Installation [1]'/>
 
         <Directory Id='TARGETDIR' Name='SourceDir'>
             <Directory Id='$(var.PlatformProgramFilesFolder)' Name='PFiles'>
-                <Directory Id='APPLICATIONFOLDER' Name='Wiki Download'>
+                <Directory Id='APPLICATIONFOLDER' Name='Rustipedia'>
                     
                     <!-- Binaries -->
                     <Component Id='binary0' Guid='*' Win64='$(var.Win64)'>
                         <File
                             Id='exe0'
-                            Name='wiki-serve.exe'
+                            Name='rustipedia-serve.exe'
                             DiskId='1'
-                            Source='target\release\wiki-serve.exe'
+                            Source='target\release\rustipedia-serve.exe'
                             KeyPath='yes'/>
                     </Component>
                     <Component Id='binary1' Guid='*' Win64='$(var.Win64)'>
                         <File
                             Id='exe1'
-                            Name='wiki-download.exe'
+                            Name='rustipedia-download.exe'
                             DiskId='1'
-                            Source='target\release\wiki-download.exe'
+                            Source='target\release\rustipedia-download.exe'
                             KeyPath='yes'/>
                     </Component>
                     <Component Id='binary2' Guid='*' Win64='$(var.Win64)'>
                         <File
                             Id='exe2'
-                            Name='wiki-setup.exe'
+                            Name='rustipedia-setup.exe'
                             DiskId='1'
-                            Source='target\release\wiki-setup.exe'
+                            Source='target\release\rustipedia-setup.exe'
+                            KeyPath='yes'/>
+                    </Component>
+                    <Component Id='binary3' Guid='*' Win64='$(var.Win64)'>
+                        <File
+                            Id='exe3'
+                            Name='rustipedia-link-validator.exe'
+                            DiskId='1'
+                            Source='target\release\rustipedia-link-validator.exe'
                             KeyPath='yes'/>
                     </Component>
 
@@ -101,7 +109,23 @@
                     </Component>
                 </Directory>
             </Directory>
+            
+            <Directory Id="ProgramMenuFolder">
+                <Directory Id="ApplicationProgramsFolder" Name="Rustipedia"/>
+            </Directory>
         </Directory>
+
+        <DirectoryRef Id="ApplicationProgramsFolder">
+            <Component Id="ApplicationShortcut" Guid="*">
+                <Shortcut Id="ApplicationStartMenuShortcut" 
+                          Name="Rustipedia Setup" 
+                          Description="Configure Rustipedia"
+                          Target="[#exe2]"
+                          WorkingDirectory="APPLICATIONFOLDER"/>
+                <RemoveFolder Id="CleanUpShortCut" Directory="ApplicationProgramsFolder" On="uninstall"/>
+                <RegistryValue Root="HKCU" Key="Software\Rustipedia\Rustipedia" Name="installed" Type="integer" Value="1" KeyPath="yes"/>
+            </Component>
+        </DirectoryRef>
 
         <Feature
             Id='Binaries'
@@ -116,20 +140,14 @@
             <ComponentRef Id='binary0'/>
             <ComponentRef Id='binary1'/>
             <ComponentRef Id='binary2'/>
+            <ComponentRef Id='binary3'/>
             <ComponentRef Id='Path'/>
+            <ComponentRef Id='ApplicationShortcut'/>
         </Feature>
 
         <SetProperty Id='ARPINSTALLLOCATION' Value='[APPLICATIONFOLDER]' After='CostFinalize'/>
 
-        
-        <!--
-          Uncomment the following `Icon` and `Property` tags to change the product icon.
-          The product icon is the graphic that appears in the Add/Remove Control Panel.
-        -->
-        <!-- <Icon Id='ProductICO' SourceFile='wix\Product.ico'/> -->
-        <!-- <Property Id='ARPPRODUCTICON' Value='ProductICO' /> -->
-
-        <Property Id='ARPHELPLINK' Value='https://github.com/yourusername/wiki_download'/>
+        <Property Id='ARPHELPLINK' Value='https://github.com/ChiefBoyardee/rustipedia'/>
         
         <UI>
             <UIRef Id='WixUI_InstallDir'/>

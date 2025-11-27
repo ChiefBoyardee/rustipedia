@@ -16,9 +16,13 @@ if [ "$EUID" -eq 0 ]; then
   echo "   We will drop privileges for the setup phase if possible, or you should run setup manually."
 fi
 
+# Binaries to install
+BINARIES=("rustipedia-download" "rustipedia-serve" "rustipedia-link-validator" "rustipedia-setup")
+
+# Installation directory
 INSTALL_DIR="/usr/local/bin"
 
-echo "Installing binaries to $INSTALL_DIR..."
+echo "Installing Rustipedia..."
 
 # Ensure /usr/local/bin exists
 if [ ! -d "$INSTALL_DIR" ]; then
@@ -34,42 +38,24 @@ else
     SUDO=""
 fi
 
-if [ -f "wiki-serve" ]; then
-    $SUDO cp wiki-serve "$INSTALL_DIR/"
-    $SUDO chmod +x "$INSTALL_DIR/wiki-serve"
-    echo "✅ Installed wiki-serve"
-else
-    echo "❌ Could not find wiki-serve binary"
-    exit 1
-fi
+for binary in "${BINARIES[@]}"; do
+    if [ -f "$binary" ]; then
+        $SUDO cp "$binary" "$INSTALL_DIR/"
+        $SUDO chmod +x "$INSTALL_DIR/$binary"
+        echo "✅ Installed $binary"
+    else
+        echo "❌ Could not find $binary binary"
+        exit 1
+    fi
+done
 
-if [ -f "wiki-download" ]; then
-    $SUDO cp wiki-download "$INSTALL_DIR/"
-    $SUDO chmod +x "$INSTALL_DIR/wiki-download"
-    echo "✅ Installed wiki-download"
-else
-    echo "❌ Could not find wiki-download binary"
-    exit 1
-fi
+echo "Installation complete!"
+echo "Run 'rustipedia-setup' to configure your server."
 
-if [ -f "wiki-setup" ]; then
-    $SUDO cp wiki-setup "$INSTALL_DIR/"
-    $SUDO chmod +x "$INSTALL_DIR/wiki-setup"
-    echo "✅ Installed wiki-setup"
-else
-    echo "❌ Could not find wiki-setup binary"
-    exit 1
-fi
-
-echo "Installation complete."
-echo "Running setup wizard..."
-echo ""
-
-# Run setup
-# If we are root, we should try to run as the original user if SUDO_USER is set
+# Run setup wizard
+# We need to run this as the original user, not root, so that config files end up in the right place
 if [ "$EUID" -eq 0 ] && [ -n "$SUDO_USER" ]; then
-    echo "Switching to user '$SUDO_USER' for configuration..."
-    sudo -u "$SUDO_USER" "$INSTALL_DIR/wiki-setup"
+    sudo -u "$SUDO_USER" "$INSTALL_DIR/rustipedia-setup"
 else
-    "$INSTALL_DIR/wiki-setup"
+    "$INSTALL_DIR/rustipedia-setup"
 fi

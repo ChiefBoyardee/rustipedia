@@ -1673,6 +1673,37 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
+name = "rustipedia"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "askama",
+ "axum",
+ "bzip2",
+ "chrono",
+ "clap",
+ "console",
+ "dialoguer",
+ "indicatif",
+ "once_cell",
+ "quick-xml",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sysinfo",
+ "tantivy",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tower 0.4.13",
+ "tower-http 0.5.2",
+ "tracing",
+ "tracing-subscriber",
+ "urlencoding",
+]
+
+[[package]]
 name = "rustix"
 version = "0.38.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2625,37 +2656,6 @@ checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "wiki_download"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "askama",
- "axum",
- "bzip2",
- "chrono",
- "clap",
- "console",
- "dialoguer",
- "indicatif",
- "once_cell",
- "quick-xml",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "sysinfo",
- "tantivy",
- "tempfile",
- "thiserror",
- "tokio",
- "tower 0.4.13",
- "tower-http 0.5.2",
- "tracing",
- "tracing-subscriber",
- "urlencoding",
 ]
 
 [[package]]

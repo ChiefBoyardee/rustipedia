@@ -1,4 +1,4 @@
-//! Wikipedia Download CLI
+//! Rustipedia Download CLI
 //!
 //! Download your own local copy of Wikipedia.
 //!
@@ -6,17 +6,17 @@
 //!
 //! Download Simple English Wikipedia (recommended for testing):
 //! ```bash
-//! wiki-download --lang simple
+//! rustipedia-download --lang simple
 //! ```
 //!
 //! Download full English Wikipedia:
 //! ```bash
-//! wiki-download --lang en
+//! rustipedia-download --lang en
 //! ```
 //!
 //! Download with custom options:
 //! ```bash
-//! wiki-download --lang de --output ./german-wiki --max-articles 10000
+//! rustipedia-download --lang de --output ./german-wiki --max-articles 10000
 //! ```
 
 use std::path::PathBuf;
@@ -25,14 +25,14 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
 
-use wiki_download::{Config, WikiDownloader, WikiLanguage, SearchIndex};
+use rustipedia::{Config, WikiDownloader, WikiLanguage, SearchIndex};
 
 #[derive(Parser)]
-#[command(name = "wiki-download")]
+#[command(name = "rustipedia-download")]
 #[command(author, version, about = "Download your own local copy of Wikipedia")]
 #[command(long_about = r#"
 ╔══════════════════════════════════════════════════════════════════╗
-║                     📚 WIKI DOWNLOAD                              ║
+║                     RUSTIPEDIA DOWNLOAD                           ║
 ║           Download & Serve Your Own Local Wikipedia              ║
 ╚══════════════════════════════════════════════════════════════════╝
 
@@ -41,22 +41,22 @@ into a searchable, browsable local archive.
 
 EXAMPLES:
   Download Simple English Wikipedia (fast, ~300MB):
-    wiki-download simple
+    rustipedia-download simple
 
   Download full English Wikipedia (~22GB):
-    wiki-download --lang en
+    rustipedia-download --lang en
 
   Download German Wikipedia to custom directory:
-    wiki-download --lang de --output ./german-wiki
+    rustipedia-download --lang de --output ./german-wiki
 
   List all available languages:
-    wiki-download list
+    rustipedia-download list
 
   Only download the dump (don't extract):
-    wiki-download --lang simple --download-only
+    rustipedia-download --lang simple --download-only
 
   Resume extraction from existing dump:
-    wiki-download --lang simple --skip-download
+    rustipedia-download --lang simple --skip-download
 "#)]
 struct Cli {
     #[command(subcommand)]
@@ -144,9 +144,9 @@ fn main() -> Result<()> {
 
     // Initialize logging
     let filter = if cli.verbose {
-        EnvFilter::new("wiki_download=debug,info")
+        EnvFilter::new("rustipedia_download=debug,info")
     } else {
-        EnvFilter::new("wiki_download=info,warn")
+        EnvFilter::new("rustipedia_download=info,warn")
     };
     
     tracing_subscriber::fmt()
@@ -202,8 +202,8 @@ fn print_languages() {
     }
     
     println!("╚══════════════════════════════════════════════════════════════════╝");
-    println!("\nUsage: wiki-download --lang <CODE> [OPTIONS]");
-    println!("\nRecommended for testing: wiki-download --lang simple");
+    println!("\nUsage: rustipedia-download --lang <CODE> [OPTIONS]");
+    println!("\nRecommended for testing: rustipedia-download --lang simple");
     println!("(Simple English is only ~300MB and downloads in minutes)\n");
     println!("Note: Extracted size will be roughly 3-4x the dump size.");
 }
@@ -211,7 +211,7 @@ fn print_languages() {
 fn download_wikipedia(lang: &str, cli: &Cli) -> Result<()> {
     // Parse language
     let language = WikiLanguage::from_code(lang)
-        .ok_or_else(|| anyhow::anyhow!("Unknown language: {}. Use 'wiki-download list' to see available languages.", lang))?;
+        .ok_or_else(|| anyhow::anyhow!("Unknown language: {}. Use 'rustipedia-download list' to see available languages.", lang))?;
 
     print_banner(&language);
 
@@ -268,7 +268,7 @@ fn download_wikipedia(lang: &str, cli: &Cli) -> Result<()> {
 
     println!("\n📂 Data saved to: {:?}", cli.output);
     println!("\n🚀 To serve your Wikipedia:");
-    println!("   wiki-serve --data {:?}", cli.output);
+    println!("   rustipedia-serve --data {:?}", cli.output);
 
     Ok(())
 }
@@ -318,7 +318,7 @@ fn prune_articles(data_dir: &PathBuf) -> Result<()> {
     use std::collections::HashSet;
     use std::fs::File;
     use std::io::{BufRead, BufReader, Write, BufWriter};
-    use wiki_download::{Article, WikiParser};
+    use rustipedia::{Article, WikiParser};
     use indicatif::{ProgressBar, ProgressStyle};
 
     let articles_path = data_dir.join("articles.jsonl");
@@ -430,7 +430,7 @@ fn prune_articles(data_dir: &PathBuf) -> Result<()> {
 fn print_banner(lang: &WikiLanguage) {
     println!();
     println!("╔══════════════════════════════════════════════════════════════════╗");
-    println!("║                     📚 WIKI DOWNLOAD                              ║");
+    println!("║                     RUSTIPEDIA DOWNLOAD                           ║");
     println!("╠══════════════════════════════════════════════════════════════════╣");
     println!("║  Language:    {} ({})                              ", lang.display_name(), lang.code());
     println!("║  Articles:    {}                                              ", lang.estimated_articles());

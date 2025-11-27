@@ -17,16 +17,16 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: wiki-download-linux-x86_64.tar.gz
-            asset_name: wiki-download-linux-x86_64.tar.gz
+            artifact_name: rustipedia-linux-x86_64.tar.gz
+            asset_name: rustipedia-linux-x86_64.tar.gz
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: wiki-download.msi
-            asset_name: wiki-download-windows-x86_64.msi
+            artifact_name: rustipedia.msi
+            asset_name: rustipedia-windows-x86_64.msi
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact_name: wiki-download-macos-x86_64.tar.gz
-            asset_name: wiki-download-macos-x86_64.tar.gz
+            artifact_name: rustipedia-macos-x86_64.tar.gz
+            asset_name: rustipedia-macos-x86_64.tar.gz
 
     steps:
       - name: Checkout code
@@ -55,9 +55,9 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           mkdir dist
-          cp target/${{ matrix.target }}/release/wiki-download dist/
-          cp target/${{ matrix.target }}/release/wiki-serve dist/
-          cp target/${{ matrix.target }}/release/wiki-setup dist/
+          cp target/${{ matrix.target }}/release/rustipedia-download dist/
+          cp target/${{ matrix.target }}/release/rustipedia-serve dist/
+          cp target/${{ matrix.target }}/release/rustipedia-setup dist/
           cp install.sh dist/
           cd dist
           tar -czf ../${{ matrix.artifact_name }} .
@@ -66,9 +66,9 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           mkdir dist
-          cp target/${{ matrix.target }}/release/wiki-download dist/
-          cp target/${{ matrix.target }}/release/wiki-serve dist/
-          cp target/${{ matrix.target }}/release/wiki-setup dist/
+          cp target/${{ matrix.target }}/release/rustipedia-download dist/
+          cp target/${{ matrix.target }}/release/rustipedia-serve dist/
+          cp target/${{ matrix.target }}/release/rustipedia-setup dist/
           cp install_mac.sh dist/
           cd dist
           tar -czf ../${{ matrix.artifact_name }} .

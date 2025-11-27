@@ -1,23 +1,4 @@
-//! # Wiki Download
-//!
-//! Download and serve your own local copy of Wikipedia.
-//!
-//! This crate provides tools to:
-//! - Download Wikipedia dumps directly from Wikimedia
-//! - Parse and extract articles from the XML dump
 //! - Store articles in a searchable format
-//! - Serve articles via a local web server
-//!
-//! ## Quick Start
-//!
-//! ```bash
-//! # Download Simple English Wikipedia (~300MB, ~200K articles)
-//! wiki-download --lang simple
-//!
-//! # Serve the downloaded Wikipedia
-//! wiki-serve --port 8080
-//! ```
-
 pub mod article;
 pub mod downloader;
 pub mod parser;

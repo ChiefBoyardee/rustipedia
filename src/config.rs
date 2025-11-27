@@ -1,10 +1,9 @@
-//! Configuration for wiki_download
+//! Rustipedia Config
 
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use crate::WikiLanguage;
 
-/// Configuration for downloading Wikipedia
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Wikipedia language to download

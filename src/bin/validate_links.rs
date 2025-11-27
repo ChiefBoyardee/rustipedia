@@ -1,6 +1,6 @@
-//! Analyze and validate internal wiki links
+//! Rustipedia Link Validator
 //!
-//! This tool scans all articles and checks if internal wiki links point to existing articles.
+//! Checks for broken internal links in the downloaded articles.
 
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -12,13 +12,13 @@ use clap::Parser;
 use regex::Regex;
 use once_cell::sync::Lazy;
 
-use wiki_download::Article;
+use rustipedia::{Article, WikiParser};
 
-static LINK_PIPE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"<a href="/wiki/([^"]+)">([^<]+)</a>"#).unwrap());
+static LINK_PIPE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\[\[([^|\]]+)\|([^\]]+)\]\]").unwrap());
 
 #[derive(Parser)]
-#[command(name = "wiki-link-validator")]
-#[command(about = "Validate internal wiki links in articles")]
+#[command(name = "rustipedia-link-validator")]
+#[command(author, version, about = "Validate internal links in Rustipedia articles")]
 struct Cli {
     /// Directory containing articles.jsonl
     #[arg(short, long, default_value = "wikipedia")]

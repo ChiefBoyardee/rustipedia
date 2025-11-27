@@ -1,4 +1,4 @@
-//! Wikipedia Web Server
+//! Rustipedia Web Server
 //!
 //! Serve your downloaded Wikipedia locally with a beautiful, searchable interface.
 //!
@@ -6,12 +6,12 @@
 //!
 //! Serve with default settings:
 //! ```bash
-//! wiki-serve
+//! rustipedia-serve
 //! ```
 //!
 //! Specify data directory and port:
 //! ```bash
-//! wiki-serve --data ./my-wiki --port 3000
+//! rustipedia-serve --data ./my-wiki --port 3000
 //! ```
 
 use std::collections::HashMap;
@@ -32,15 +32,15 @@ use clap::Parser;
 use tokio::sync::RwLock;
 use tracing_subscriber::EnvFilter;
 
-use wiki_download::{Article, SearchIndex, WikiLanguage};
+use rustipedia::{Article, SearchIndex, WikiLanguage};
 
 #[derive(Parser)]
-#[command(name = "wiki-serve")]
+#[command(name = "rustipedia-serve")]
 #[command(author, version, about = "Serve your local Wikipedia")]
 #[command(long_about = r#"
 ╔══════════════════════════════════════════════════════════════════╗
-║                     🌐 WIKI SERVE                                 ║
-║            Serve Your Local Wikipedia Collection                 ║
+║                     RUSTIPEDIA                                    ║
+║            Your Local Wikipedia Server                           ║
 ╚══════════════════════════════════════════════════════════════════╝
 
 Serve your downloaded Wikipedia with a beautiful, searchable interface.
@@ -48,16 +48,16 @@ Browse articles, search by title or content, and explore offline!
 
 EXAMPLES:
   Start server with defaults:
-    wiki-serve
+    rustipedia-serve
 
   Use custom data directory:
-    wiki-serve --data ./my-wiki
+    rustipedia-serve --data ./my-wiki
 
   Use custom port:
-    wiki-serve --port 3000
+    rustipedia-serve --port 3000
 
   Bind to all interfaces (for network access):
-    wiki-serve --host 0.0.0.0
+    rustipedia-serve --host 0.0.0.0
 "#)]
 struct Cli {
     /// Directory containing Wikipedia data
@@ -97,7 +97,7 @@ impl AppState {
     fn load(data_dir: &PathBuf) -> Result<Self> {
         let articles_path = data_dir.join("articles.jsonl");
         if !articles_path.exists() {
-            anyhow::bail!("Articles file not found: {:?}. Run wiki-download first.", articles_path);
+            anyhow::bail!("Articles file not found: {:?}. Run rustipedia-download first.", articles_path);
         }
 
         // Try to load search index
@@ -115,7 +115,7 @@ impl AppState {
                 }
             }
         } else {
-            tracing::warn!("No search index found. Search disabled. Run: wiki-download index {:?}", data_dir);
+            tracing::warn!("No search index found. Search disabled. Run: rustipedia-download index {:?}", data_dir);
             None
         };
 
@@ -219,9 +219,9 @@ async fn main() -> Result<()> {
 
     // Initialize logging
     let filter = if cli.verbose {
-        EnvFilter::new("wiki_serve=debug,tower_http=debug,info")
+        EnvFilter::new("rustipedia_serve=debug,tower_http=debug,info")
     } else {
-        EnvFilter::new("wiki_serve=info,warn")
+        EnvFilter::new("rustipedia_serve=info,warn")
     };
     
     tracing_subscriber::fmt()
@@ -249,7 +249,7 @@ async fn main() -> Result<()> {
     
     println!();
     println!("╔══════════════════════════════════════════════════════════════════╗");
-    println!("║                     🌐 WIKI SERVE                                 ║");
+    println!("║                     RUSTIPEDIA                                    ║");
     println!("╠══════════════════════════════════════════════════════════════════╣");
     println!("║  Server running at: http://{}                          ", addr);
     println!("║  Data directory:    {:?}                                ", cli.data);
@@ -273,7 +273,7 @@ fn base_html(title: &str, content: &str, state: &AppState) -> String {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{} - Local Wikipedia</title>
+    <title>{} - Rustipedia</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
@@ -686,7 +686,7 @@ fn base_html(title: &str, content: &str, state: &AppState) -> String {
 <body>
     <header>
         <div class="container header-inner">
-            <a href="/" class="logo">📚 <span>Local Wiki</span></a>
+            <a href="/" class="logo">📚 <span>Rustipedia</span></a>
             <form action="/search" method="GET" class="search-form">
                 <input type="search" name="q" placeholder="Search articles..." class="search-input">
             </form>
@@ -702,7 +702,7 @@ fn base_html(title: &str, content: &str, state: &AppState) -> String {
     </main>
     
     <footer class="container">
-        <p>Local Wikipedia Server • {} articles • Powered by wiki-download</p>
+        <p>Rustipedia • {} articles • Powered by rustipedia-download</p>
     </footer>
 </body>
 </html>"#, title, content, state.article_count)

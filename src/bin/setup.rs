@@ -1,6 +1,6 @@
-//! Wiki Setup Tool
+//! Rustipedia Setup Tool
 //!
-//! Interactive wizard for configuring and installing the Wiki Server.
+//! Interactive wizard for configuring and installing the Rustipedia Server.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -13,8 +13,8 @@ use dialoguer::{theme::ColorfulTheme, Select, Input, Confirm, MultiSelect};
 use console::style;
 
 #[derive(Parser)]
-#[command(name = "wiki-setup")]
-#[command(author, version, about = "Setup wizard for Wiki Server")]
+#[command(name = "rustipedia-setup")]
+#[command(author, version, about = "Setup wizard for Rustipedia Server")]
 struct Cli {
     /// Non-interactive mode (use defaults or flags)
     #[arg(long)]
@@ -48,7 +48,7 @@ fn main() -> Result<()> {
 
     println!();
     println!("{}", style("╔══════════════════════════════════════════════════════════════════╗").cyan());
-    println!("{}", style("║                     🛠️  WIKI SETUP                                ║").cyan());
+    println!("{}", style("║                     🛠️  RUSTIPEDIA SETUP                          ║").cyan());
     println!("{}", style("╚══════════════════════════════════════════════════════════════════╝").cyan());
     println!();
 
@@ -156,10 +156,10 @@ fn main() -> Result<()> {
     println!("✅ Configuration saved to {:?}", config_path);
 
     // 3. Download Content (if needed)
-    // We invoke the wiki-download binary. 
+    // We invoke the rustipedia-download binary. 
     // Assuming it's in the same directory as this executable or in PATH.
     let exe_dir = std::env::current_exe()?.parent().unwrap().to_path_buf();
-    let downloader_exe = if cfg!(windows) { "wiki-download.exe" } else { "wiki-download" };
+    let downloader_exe = if cfg!(windows) { "rustipedia-download.exe" } else { "rustipedia-download" };
     let downloader_path = exe_dir.join(downloader_exe);
 
     // Check if we should run download
@@ -186,8 +186,8 @@ fn main() -> Result<()> {
         Ok(s) if s.success() => println!("\n✅ Download complete!"),
         Ok(s) => println!("\n❌ Download failed with exit code: {:?}", s.code()),
         Err(e) => {
-            println!("\n⚠️  Could not find or run wiki-download: {}", e);
-            println!("   Please run it manually: wiki-download --lang {} --output {:?}", lang_code, data_dir);
+            println!("\n⚠️  Could not find or run rustipedia-download: {}", e);
+            println!("   Please run it manually: rustipedia-download --lang {} --output {:?}", lang_code, data_dir);
         }
     }
 
@@ -206,7 +206,7 @@ fn main() -> Result<()> {
         println!("Service should be running on http://localhost:{}", port);
     } else {
         println!("Run the server manually:");
-        println!("  wiki-serve --data {:?} --port {}", data_dir, port);
+        println!("  rustipedia-serve --data {:?} --port {}", data_dir, port);
     }
 
     Ok(())
@@ -218,8 +218,8 @@ fn install_system_service(exe_dir: &Path, data_dir: &Path, port: u16) -> Result<
     #[cfg(target_os = "windows")]
     {
         // Use sc.exe
-        // sc create wiki-serve binPath= "C:\Path\wiki-serve.exe --data C:\Data --port 3000" start= auto
-        let bin_path = exe_dir.join("wiki-serve.exe");
+        // sc create rustipedia-serve binPath= "C:\Path\rustipedia-serve.exe --data C:\Data --port 3000" start= auto
+        let bin_path = exe_dir.join("rustipedia-serve.exe");
         let cmd = format!(
             "\"{}\" --data \"{}\" --port {}", 
             bin_path.to_string_lossy(), 
@@ -228,8 +228,8 @@ fn install_system_service(exe_dir: &Path, data_dir: &Path, port: u16) -> Result<
         );
         
         // We need to be careful with quoting for sc.exe binPath
-        // sc create wiki-serve binPath= "\"C:\Path\wiki-serve.exe\" --data ..."
-        // let sc_bin_path = format!("\\\"{}\\\" --data \\\"{}\\\" --port {}", 
+        // sc create rustipedia-serve binPath= "\"C:\Path\rustipedia-serve.exe\" --data ..."
+        // let sc_bin_path = format!("\\\"{}\\\" --data \\\"{}\\\" --port {}",  
         //     bin_path.to_string_lossy(),
         //     data_dir.to_string_lossy(),
         //     port
@@ -237,18 +237,18 @@ fn install_system_service(exe_dir: &Path, data_dir: &Path, port: u16) -> Result<
 
         let status = Command::new("sc")
             .arg("create")
-            .arg("wiki-serve")
+            .arg("rustipedia-serve")
             .arg("binPath=")
             .arg(&cmd) // Rust Command handles quoting of the argument itself, but sc expects the string to contain the command line
             .arg("start=")
             .arg("auto")
             .arg("DisplayName=")
-            .arg("Local Wikipedia Server")
+            .arg("Rustipedia Local Wikipedia Server")
             .status()?;
 
         if status.success() {
-            println!("✅ Service 'wiki-serve' created.");
-            let _ = Command::new("sc").arg("start").arg("wiki-serve").status();
+            println!("✅ Service 'rustipedia-serve' created.");
+            let _ = Command::new("sc").arg("start").arg("rustipedia-serve").status();
             println!("✅ Service started.");
         } else {
             println!("❌ Failed to create service. Run as Administrator?");
@@ -259,12 +259,12 @@ fn install_system_service(exe_dir: &Path, data_dir: &Path, port: u16) -> Result<
     {
         // Create systemd unit
         let unit_content = format!(r#"[Unit]
-Description=Local Wikipedia Server
+Description=Rustipedia Local Wikipedia Server
 After=network.target
 
 [Service]
 Type=simple
-ExecStart={}/wiki-serve --data "{}" --port {}
+ExecStart={}/rustipedia-serve --data "{}" --port {}
 Restart=on-failure
 User={}
 
@@ -277,7 +277,7 @@ WantedBy=multi-user.target
             std::env::var("USER").unwrap_or("root".to_string())
         );
 
-        let unit_path = "/etc/systemd/system/wiki-serve.service";
+        let unit_path = "/etc/systemd/system/rustipedia-serve.service";
         
         // We might need sudo. If we are not root, this will fail.
         // For now, just try to write.
@@ -285,13 +285,13 @@ WantedBy=multi-user.target
             Ok(_) => {
                 println!("✅ Created {}", unit_path);
                 Command::new("systemctl").arg("daemon-reload").status()?;
-                Command::new("systemctl").arg("enable").arg("wiki-serve").status()?;
-                Command::new("systemctl").arg("start").arg("wiki-serve").status()?;
+                Command::new("systemctl").arg("enable").arg("rustipedia-serve").status()?;
+                Command::new("systemctl").arg("start").arg("rustipedia-serve").status()?;
                 println!("✅ Service started");
             },
             Err(e) => {
                 println!("❌ Failed to write service file: {}. (Need sudo?)", e);
-                println!("   Run: sudo cp wiki-serve.service /etc/systemd/system/");
+                println!("   Run: sudo cp rustipedia-serve.service /etc/systemd/system/");
             }
         }
     }
@@ -304,10 +304,10 @@ WantedBy=multi-user.target
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.wiki-download.serve</string>
+    <string>com.rustipedia.serve</string>
     <key>ProgramArguments</key>
     <array>
-        <string>{}/wiki-serve</string>
+        <string>{}/rustipedia-serve</string>
         <string>--data</string>
         <string>{}</string>
         <string>--port</string>
@@ -318,9 +318,9 @@ WantedBy=multi-user.target
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/tmp/wiki-serve.log</string>
+    <string>/tmp/rustipedia-serve.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/wiki-serve.err</string>
+    <string>/tmp/rustipedia-serve.err</string>
 </dict>
 </plist>
 "#,
@@ -332,7 +332,7 @@ WantedBy=multi-user.target
         let home = std::env::var("HOME").unwrap();
         let launch_agents = PathBuf::from(home).join("Library/LaunchAgents");
         fs::create_dir_all(&launch_agents)?;
-        let plist_path = launch_agents.join("com.wiki-download.serve.plist");
+        let plist_path = launch_agents.join("com.rustipedia.serve.plist");
         
         fs::write(&plist_path, plist_content)?;
         println!("✅ Created {:?}", plist_path);
@@ -347,12 +347,12 @@ WantedBy=multi-user.target
 fn setup_auto_update(exe_dir: &Path, data_dir: &Path, lang: &str) -> Result<()> {
     println!("\n⏰ Setting up Auto-Update (Weekly)...");
     
-    let bin_path = exe_dir.join(if cfg!(windows) { "wiki-download.exe" } else { "wiki-download" });
+    let bin_path = exe_dir.join(if cfg!(windows) { "rustipedia-download.exe" } else { "rustipedia-download" });
     let log_path = data_dir.join("update.log");
     
     #[cfg(target_os = "windows")]
     {
-        // schtasks /create /tn "WikiUpdate" /tr "\"C:\Path\wiki-download.exe\" --lang en --output \"C:\Data\"" /sc weekly /d SUN /st 03:00
+        // schtasks /create /tn "RustipediaUpdate" /tr "\"C:\Path\rustipedia-download.exe\" --lang en --output \"C:\Data\"" /sc weekly /d SUN /st 03:00
         let cmd = format!(
             "\\\"{}\\\" --lang {} --output \\\"{}\\\" > \\\"{}\\\" 2>&1", 
             bin_path.to_string_lossy(),
@@ -364,7 +364,7 @@ fn setup_auto_update(exe_dir: &Path, data_dir: &Path, lang: &str) -> Result<()> 
         let status = Command::new("schtasks")
             .arg("/create")
             .arg("/tn")
-            .arg("WikiUpdate")
+            .arg("RustipediaUpdate")
             .arg("/tr")
             .arg(cmd) // schtasks expects the command to be passed as one argument
             .arg("/sc")
@@ -377,7 +377,7 @@ fn setup_auto_update(exe_dir: &Path, data_dir: &Path, lang: &str) -> Result<()> 
             .status()?;
             
         if status.success() {
-            println!("✅ Scheduled task 'WikiUpdate' created.");
+            println!("✅ Scheduled task 'RustipediaUpdate' created.");
         } else {
             println!("❌ Failed to create scheduled task.");
         }
@@ -385,7 +385,7 @@ fn setup_auto_update(exe_dir: &Path, data_dir: &Path, lang: &str) -> Result<()> 
 
     #[cfg(unix)]
     {
-        // (crontab -l 2>/dev/null; echo "0 3 * * 0 /path/to/wiki-download ...") | crontab -
+        // (crontab -l 2>/dev/null; echo "0 3 * * 0 /path/to/rustipedia-download ...") | crontab -
         let cmd = format!(
             "0 3 * * 0 \"{}\" --lang {} --output \"{}\" >> \"{}\" 2>&1",
             bin_path.to_string_lossy(),
@@ -406,7 +406,7 @@ fn setup_auto_update(exe_dir: &Path, data_dir: &Path, lang: &str) -> Result<()> 
             String::new()
         };
         
-        if current_cron.contains("wiki-download") {
+        if current_cron.contains("rustipedia-download") {
             println!("⚠️  Auto-update seems to be already configured in crontab.");
         } else {
             let new_cron = format!("{}\n{}\n", current_cron.trim(), cmd);

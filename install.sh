@@ -13,42 +13,30 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+# Binaries to install
+BINARIES=("rustipedia-download" "rustipedia-serve" "rustipedia-link-validator" "rustipedia-setup")
+
+# Installation directory
 INSTALL_DIR="/usr/local/bin"
 
-echo "Installing binaries to $INSTALL_DIR..."
+echo "Installing Rustipedia binaries to $INSTALL_DIR..."
 
 # Copy binaries
 # Assumes we are running from the extracted tarball or build directory
-if [ -f "wiki-serve" ]; then
-    cp wiki-serve "$INSTALL_DIR/"
-    chmod +x "$INSTALL_DIR/wiki-serve"
-    echo "✅ Installed wiki-serve"
-else
-    echo "❌ Could not find wiki-serve binary in current directory"
-    exit 1
-fi
+for binary in "${BINARIES[@]}"; do
+    if [ -f "$binary" ]; then
+        cp "$binary" "$INSTALL_DIR/"
+        chmod +x "$INSTALL_DIR/$binary"
+        echo "✅ Installed $binary"
+    else
+        echo "❌ Could not find $binary binary in current directory"
+        exit 1
+    fi
+done
 
-if [ -f "wiki-download" ]; then
-    cp wiki-download "$INSTALL_DIR/"
-    chmod +x "$INSTALL_DIR/wiki-download"
-    echo "✅ Installed wiki-download"
-else
-    echo "❌ Could not find wiki-download binary"
-    exit 1
-fi
-
-if [ -f "wiki-setup" ]; then
-    cp wiki-setup "$INSTALL_DIR/"
-    chmod +x "$INSTALL_DIR/wiki-setup"
-    echo "✅ Installed wiki-setup"
-else
-    echo "❌ Could not find wiki-setup binary"
-    exit 1
-fi
-
-echo "Installation complete."
-echo "Running setup wizard..."
+echo "Installation complete!"
+echo "Run 'rustipedia-setup' to configure your server."
 echo ""
 
-# Run setup
-"$INSTALL_DIR/wiki-setup"
+# Run setup wizard
+"$INSTALL_DIR/rustipedia-setup"
