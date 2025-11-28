@@ -51,10 +51,10 @@ jobs:
           - name: Windows (.msi)
             os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: rustipedia.msi
+            artifact_name: rustipedia-windows-x86_64.msi
             asset_name: rustipedia-windows-x86_64.msi
             build_type: windows
-          
+
           # macOS Intel
           - name: macOS Intel
             os: macos-latest
@@ -62,6 +62,22 @@ jobs:
             artifact_name: rustipedia-macos-x86_64.tar.gz
             asset_name: rustipedia-macos-x86_64.tar.gz
             build_type: macos
+
+          # macOS Apple Silicon
+          - name: macOS Apple Silicon
+            os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: rustipedia-macos-aarch64.tar.gz
+            asset_name: rustipedia-macos-aarch64.tar.gz
+            build_type: macos
+
+          # Linux ARM64
+          - name: Linux ARM64
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact_name: rustipedia-linux-aarch64.tar.gz
+            asset_name: rustipedia-linux-aarch64.tar.gz
+            build_type: linux-arm
 
     steps:
       - name: Checkout code
@@ -72,6 +88,13 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      # --- Linux ARM64 Setup ---
+      - name: Install ARM64 Cross-compiler
+        if: matrix.build_type == 'linux-arm'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+
       # --- Windows Specific ---
       - name: Install WiX (Windows)
         if: matrix.build_type == 'windows'
@@ -80,6 +103,11 @@ jobs:
       - name: Build MSI (Windows)
         if: matrix.build_type == 'windows'
         run: cargo wix --nocapture
+
+      - name: Rename MSI (Windows)
+        if: matrix.build_type == 'windows'
+        run: |
+          Move-Item target/wix/*.msi ${{ matrix.artifact_name }}
 
       # --- Linux musl (static) ---
       - name: Install musl tools and OpenSSL
@@ -259,6 +287,5 @@ jobs:
         with:
           files: |
             ${{ matrix.artifact_name }}
-            target/wix/*.msi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

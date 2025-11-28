@@ -5,12 +5,12 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::fs;
-use std::io::Write;
 
 use anyhow::{Result, Context};
 use clap::Parser;
-use dialoguer::{theme::ColorfulTheme, Select, Input, Confirm, MultiSelect};
+use dialoguer::{theme::ColorfulTheme, Select, Input, Confirm};
 use console::style;
+use rustipedia::{UpdateConfig, UpdateSchedule, Weekday};
 
 #[derive(Parser)]
 #[command(name = "rustipedia-setup")]
@@ -41,7 +41,58 @@ struct Cli {
     prune: Option<bool>,
 }
 
+#[cfg(windows)]
+fn ensure_admin() -> Result<()> {
+    // Check if running as admin by trying to execute a command that requires it
+    let status = Command::new("net")
+        .arg("session")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+
+    if let Ok(status) = status {
+        if status.success() {
+            return Ok(()); // Already admin
+        }
+    }
+
+    // Not admin, relaunch
+    println!("Requesting Administrator privileges...");
+    
+    let exe = std::env::current_exe()?;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    
+    let mut cmd = Command::new("powershell");
+    cmd.arg("-Command");
+    cmd.arg("Start-Process");
+    cmd.arg("-FilePath");
+    cmd.arg(format!("'{}'", exe.to_string_lossy()));
+    
+    if !args.is_empty() {
+        // Escape arguments properly? For now simple joining.
+        // Ideally we should escape quotes.
+        let args_str = args.join(" ");
+        cmd.arg("-ArgumentList");
+        cmd.arg(format!("'{}'", args_str));
+    }
+    
+    cmd.arg("-Verb");
+    cmd.arg("RunAs");
+    cmd.arg("-Wait"); 
+    
+    let status = cmd.status()?;
+    
+    if status.success() {
+        std::process::exit(0);
+    } else {
+        anyhow::bail!("Failed to elevate privileges. Please run as Administrator.");
+    }
+}
+
 fn main() -> Result<()> {
+    #[cfg(windows)]
+    ensure_admin()?;
+
     // Enable ANSI support on Windows
     // #[cfg(windows)]
     // let _ = console::enable_ansi_support();
@@ -117,9 +168,96 @@ fn main() -> Result<()> {
 
     // 6. Auto-Update
     let auto_update = Confirm::with_theme(&ColorfulTheme::default())
-        .with_prompt("Enable auto-updates? (Weekly check)")
+        .with_prompt("Enable auto-updates?")
         .default(false)
         .interact()?;
+
+    let mut update_schedule = UpdateSchedule::Weekly { 
+        day: Weekday::Sunday, 
+        hour: 3, 
+        minute: 0 
+    };
+
+    if auto_update {
+        let frequencies = vec!["Daily", "Weekly", "Monthly"];
+        let freq_idx = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Update Frequency")
+            .default(1) // Weekly
+            .items(&frequencies)
+            .interact()?;
+
+        update_schedule = match freq_idx {
+            0 => { // Daily
+                let hour: u8 = Input::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Hour (0-23)")
+                    .default(3)
+                    .interact_text()?;
+                UpdateSchedule::Daily { hour, minute: 0 }
+            },
+            1 => { // Weekly
+                let days = vec!["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+                let day_idx = Select::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Day of Week")
+                    .default(0)
+                    .items(&days)
+                    .interact()?;
+                
+                let day = match day_idx {
+                    0 => Weekday::Sunday,
+                    1 => Weekday::Monday,
+                    2 => Weekday::Tuesday,
+                    3 => Weekday::Wednesday,
+                    4 => Weekday::Thursday,
+                    5 => Weekday::Friday,
+                    6 => Weekday::Saturday,
+                    _ => unreachable!(),
+                };
+
+                let hour: u8 = Input::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Hour (0-23)")
+                    .default(3)
+                    .interact_text()?;
+                
+                UpdateSchedule::Weekly { day, hour, minute: 0 }
+            },
+            2 => { // Monthly
+                let day: u8 = Input::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Day of Month (1-28)")
+                    .default(1)
+                    .interact_text()?;
+                
+                let hour: u8 = Input::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Hour (0-23)")
+                    .default(3)
+                    .interact_text()?;
+                
+                UpdateSchedule::Monthly { day, hour, minute: 0 }
+            },
+            _ => unreachable!(),
+        };
+    }
+
+    let mut max_bandwidth = 0;
+    let mut retry_count = 3;
+
+    if auto_update {
+        let advanced_update = Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt("Configure advanced update settings? (Bandwidth, Retries)")
+            .default(false)
+            .interact()?;
+
+        if advanced_update {
+            max_bandwidth = Input::with_theme(&ColorfulTheme::default())
+                .with_prompt("Max Bandwidth (MB/s, 0 for unlimited)")
+                .default(0)
+                .interact_text()?;
+                
+            retry_count = Input::with_theme(&ColorfulTheme::default())
+                .with_prompt("Max Retries")
+                .default(3)
+                .interact_text()?;
+        }
+    }
 
     println!("\n{}", style("Configuration Summary:").bold());
     println!("  Language: {}", style(&lang_code).green());
@@ -128,6 +266,9 @@ fn main() -> Result<()> {
     println!("  Prune:    {}", style(if prune { "Yes" } else { "No" }).green());
     println!("  Service:  {}", style(if install_service { "Yes" } else { "No" }).green());
     println!("  Updates:  {}", style(if auto_update { "Yes" } else { "No" }).green());
+    if auto_update {
+        println!("  Schedule: {}", style(update_schedule.to_human_string()).green());
+    }
     println!();
 
     if !Confirm::with_theme(&ColorfulTheme::default())
@@ -198,7 +339,7 @@ fn main() -> Result<()> {
 
     // 5. Setup Auto-Update
     if auto_update {
-        setup_auto_update(&exe_dir, &data_dir, &lang_code)?;
+        setup_auto_update(&exe_dir, &data_dir, &lang_code, update_schedule, max_bandwidth, retry_count)?;
     }
 
     println!("\n{}", style("🎉 Setup Complete!").bold().green());
@@ -227,19 +368,11 @@ fn install_system_service(exe_dir: &Path, data_dir: &Path, port: u16) -> Result<
             port
         );
         
-        // We need to be careful with quoting for sc.exe binPath
-        // sc create rustipedia-serve binPath= "\"C:\Path\rustipedia-serve.exe\" --data ..."
-        // let sc_bin_path = format!("\\\"{}\\\" --data \\\"{}\\\" --port {}",  
-        //     bin_path.to_string_lossy(),
-        //     data_dir.to_string_lossy(),
-        //     port
-        // );
-
         let status = Command::new("sc")
             .arg("create")
             .arg("rustipedia-serve")
             .arg("binPath=")
-            .arg(&cmd) // Rust Command handles quoting of the argument itself, but sc expects the string to contain the command line
+            .arg(&cmd) 
             .arg("start=")
             .arg("auto")
             .arg("DisplayName=")
@@ -251,7 +384,26 @@ fn install_system_service(exe_dir: &Path, data_dir: &Path, port: u16) -> Result<
             let _ = Command::new("sc").arg("start").arg("rustipedia-serve").status();
             println!("✅ Service started.");
         } else {
-            println!("❌ Failed to create service. Run as Administrator?");
+            println!("⚠️  Service creation failed (might already exist). Trying to update configuration...");
+            // Try sc config
+            let status_config = Command::new("sc")
+                .arg("config")
+                .arg("rustipedia-serve")
+                .arg("binPath=")
+                .arg(&cmd)
+                .arg("start=")
+                .arg("auto")
+                .arg("DisplayName=")
+                .arg("Rustipedia Local Wikipedia Server")
+                .status()?;
+             
+             if status_config.success() {
+                 println!("✅ Service configuration updated.");
+                 let _ = Command::new("sc").arg("start").arg("rustipedia-serve").status();
+                 println!("✅ Service started.");
+             } else {
+                 println!("❌ Failed to configure service. Run as Administrator?");
+             }
         }
     }
 
@@ -279,8 +431,6 @@ WantedBy=multi-user.target
 
         let unit_path = "/etc/systemd/system/rustipedia-serve.service";
         
-        // We might need sudo. If we are not root, this will fail.
-        // For now, just try to write.
         match fs::write(unit_path, unit_content) {
             Ok(_) => {
                 println!("✅ Created {}", unit_path);
@@ -344,40 +494,57 @@ WantedBy=multi-user.target
     Ok(())
 }
 
-fn setup_auto_update(exe_dir: &Path, data_dir: &Path, lang: &str) -> Result<()> {
-    println!("\n⏰ Setting up Auto-Update (Weekly)...");
+fn setup_auto_update(
+    exe_dir: &Path, 
+    data_dir: &Path, 
+    lang: &str, 
+    schedule: UpdateSchedule,
+    max_bandwidth: u32,
+    retry_count: u32
+) -> Result<()> {
+    println!("\n⏰ Setting up Auto-Update...");
     
-    let bin_path = exe_dir.join(if cfg!(windows) { "rustipedia-download.exe" } else { "rustipedia-download" });
-    let log_path = data_dir.join("update.log");
+    // 1. Create and save update config
+    let mut config = UpdateConfig::default();
+    config.enabled = true;
+    config.schedule = schedule;
+    config.language = lang.to_string();
+    config.data_dir = data_dir.to_path_buf();
+    config.max_bandwidth = max_bandwidth;
+    config.retry_config.max_retries = retry_count;
+    
+    config.save(UpdateConfig::config_path(data_dir))?;
+    println!("✅ Update configuration saved.");
+
+    // 2. Install Daemon Service/Task
+    // The daemon should run frequently (e.g., every hour) to check if it's time to update
+    
+    let bin_path = exe_dir.join(if cfg!(windows) { "rustipedia-update-daemon.exe" } else { "rustipedia-update-daemon" });
     
     #[cfg(target_os = "windows")]
     {
-        // schtasks /create /tn "RustipediaUpdate" /tr "\"C:\Path\rustipedia-download.exe\" --lang en --output \"C:\Data\"" /sc weekly /d SUN /st 03:00
+        // Create a scheduled task that runs every hour
         let cmd = format!(
-            "\\\"{}\\\" --lang {} --output \\\"{}\\\" > \\\"{}\\\" 2>&1", 
+            "\\\"{}\\\" --data \\\"{}\\\" --interval 60", 
             bin_path.to_string_lossy(),
-            lang,
-            data_dir.to_string_lossy(),
-            log_path.to_string_lossy()
+            data_dir.to_string_lossy()
         );
         
         let status = Command::new("schtasks")
             .arg("/create")
             .arg("/tn")
-            .arg("RustipediaUpdate")
+            .arg("RustipediaUpdateDaemon")
             .arg("/tr")
-            .arg(cmd) // schtasks expects the command to be passed as one argument
+            .arg(cmd)
             .arg("/sc")
-            .arg("weekly")
-            .arg("/d")
-            .arg("SUN")
-            .arg("/st")
-            .arg("03:00")
+            .arg("HOURLY") // Check every hour
+            .arg("/mo")
+            .arg("1")
             .arg("/f") // Force overwrite
             .status()?;
             
         if status.success() {
-            println!("✅ Scheduled task 'RustipediaUpdate' created.");
+            println!("✅ Scheduled task 'RustipediaUpdateDaemon' created (runs hourly).");
         } else {
             println!("❌ Failed to create scheduled task.");
         }
@@ -385,20 +552,16 @@ fn setup_auto_update(exe_dir: &Path, data_dir: &Path, lang: &str) -> Result<()> 
 
     #[cfg(unix)]
     {
-        // (crontab -l 2>/dev/null; echo "0 3 * * 0 /path/to/rustipedia-download ...") | crontab -
+        use std::io::Write;
+        // Add to crontab to run hourly
+        // 0 * * * * /path/to/rustipedia-update-daemon --data /path/to/data --once
         let cmd = format!(
-            "0 3 * * 0 \"{}\" --lang {} --output \"{}\" >> \"{}\" 2>&1",
+            "0 * * * * \"{}\" --data \"{}\" --once >> \"{}/update_daemon.log\" 2>&1",
             bin_path.to_string_lossy(),
-            lang,
             data_dir.to_string_lossy(),
-            log_path.to_string_lossy()
+            data_dir.to_string_lossy()
         );
         
-        // We need to be careful not to duplicate.
-        // For simplicity, we'll just append.
-        // A better way is to write a file to /etc/cron.d/ if root, or use crontab.
-        
-        // Let's try adding to current user's crontab
         let output = Command::new("crontab").arg("-l").output();
         let current_cron = if let Ok(out) = output {
             String::from_utf8_lossy(&out.stdout).to_string()
@@ -406,8 +569,8 @@ fn setup_auto_update(exe_dir: &Path, data_dir: &Path, lang: &str) -> Result<()> 
             String::new()
         };
         
-        if current_cron.contains("rustipedia-download") {
-            println!("⚠️  Auto-update seems to be already configured in crontab.");
+        if current_cron.contains("rustipedia-update-daemon") {
+            println!("⚠️  Auto-update daemon seems to be already configured in crontab.");
         } else {
             let new_cron = format!("{}\n{}\n", current_cron.trim(), cmd);
             
@@ -422,7 +585,7 @@ fn setup_auto_update(exe_dir: &Path, data_dir: &Path, lang: &str) -> Result<()> 
             
             let status = child.wait()?;
             if status.success() {
-                println!("✅ Added auto-update to crontab.");
+                println!("✅ Added auto-update daemon to crontab (runs hourly).");
             } else {
                 println!("❌ Failed to update crontab.");
             }

@@ -5,6 +5,29 @@ All notable changes to Rustipedia will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2025-11-28
+
+### 🌟 New Features
+
+#### Branding & Customization
+- **Custom Logo Support**: Users can now upload their own logo via the settings page to replace the default Rustipedia branding.
+- **Embedded Default Logo**: The default logo is now embedded directly into the binary, removing external file dependencies.
+- **Settings UI Update**: Added a new "Branding" section to the settings page for managing the server logo.
+
+### 🐛 Bug Fixes
+
+#### Installer & Setup
+- **Windows Service Registration**: The MSI installer now correctly registers `rustipedia-serve` as a Windows Service.
+- **Service Configuration**: The setup wizard now gracefully handles existing services, reconfiguring them instead of failing.
+- **Configuration Priority**: The server now correctly prioritizes settings from `config.json` (port, host) over default values.
+
+#### Other Fixes
+- **Git Ignore**: Updated `.gitignore` to exclude user-uploaded `custom_logo.png` files.
+- **Dependencies**: Enabled `multipart` feature in `axum` to support file uploads.
+
+### 📚 Documentation
+- **README**: Updated with the new logo and branding.
+
 ## [0.2.0] - 2025-11-27
 
 ### 🔒 Security Enhancements

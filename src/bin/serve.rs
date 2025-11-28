@@ -22,12 +22,12 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, Query, State, Form, Json, Multipart},
     http::StatusCode,
     response::{Html, IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
     Router,
-    http::{HeaderName, HeaderValue},
+    http::{HeaderName, HeaderValue, header},
 };
 use clap::Parser;
 use tokio::sync::RwLock;
@@ -38,7 +38,9 @@ use tower_http::cors::{CorsLayer, Any};
 use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
 use rand::Rng;
 
-use rustipedia::{Article, SearchIndex, WikiLanguage};
+use rustipedia::{Article, SearchIndex, WikiLanguage, UpdateConfig, UpdateSchedule, Weekday, UpdateManager};
+
+const DEFAULT_LOGO: &[u8] = include_bytes!("Logo.png");
 
 #[derive(Parser)]
 #[command(name = "rustipedia-serve")]
@@ -71,12 +73,12 @@ struct Cli {
     data: PathBuf,
 
     /// Port to listen on
-    #[arg(short, long, default_value = "8080")]
-    port: u16,
+    #[arg(short, long)]
+    port: Option<u16>,
 
     /// Host to bind to
-    #[arg(long, default_value = "127.0.0.1")]
-    host: String,
+    #[arg(long)]
+    host: Option<String>,
 
     /// Verbose output
     #[arg(short, long)]
@@ -97,6 +99,14 @@ struct AppState {
     language: String,
     /// Total article count
     article_count: usize,
+    /// Data directory
+    data_dir: PathBuf,
+    /// Auto-update configuration
+    update_config: UpdateConfig,
+    /// Configured port (from config.json)
+    config_port: Option<u16>,
+    /// Configured host (from config.json)
+    config_host: Option<String>,
 }
 
 impl AppState {
@@ -175,6 +185,21 @@ impl AppState {
             "unknown".to_string()
         };
 
+        // Try to load port/host from config
+        let (config_port, config_host) = if config_path.exists() {
+            let content = fs::read_to_string(&config_path).unwrap_or_default();
+            let v: serde_json::Value = serde_json::from_str(&content).unwrap_or(serde_json::json!({}));
+            (
+                v["port"].as_u64().map(|p| p as u16),
+                v["host"].as_str().map(String::from)
+            )
+        } else {
+            (None, None)
+        };
+
+        // Load update config
+        let update_config = UpdateConfig::load(UpdateConfig::config_path(data_dir)).unwrap_or_default();
+
         Ok(Self {
             articles,
             by_title,
@@ -182,6 +207,10 @@ impl AppState {
             all_titles,
             language,
             article_count,
+            data_dir: data_dir.clone(),
+            update_config,
+            config_port,
+            config_host,
         })
     }
 
@@ -237,6 +266,8 @@ async fn main() -> Result<()> {
 
     // Load data
     let state = AppState::load(&cli.data)?;
+    let config_port = state.config_port;
+    let config_host = state.config_host.clone();
     let shared_state: SharedState = Arc::new(RwLock::new(state));
 
     // Build router
@@ -249,6 +280,12 @@ async fn main() -> Result<()> {
         .route("/random", get(random_article))
         .route("/api/articles", get(api_articles))
         .route("/api/search", get(api_search))
+        .route("/settings", get(settings_page).post(update_settings))
+        .route("/api/update/status", get(api_update_status))
+        .route("/api/update/trigger", post(api_trigger_update))
+        .route("/api/update/history", get(api_update_history))
+        .route("/logo", get(logo_handler))
+        .route("/settings/logo", post(upload_logo))
         .with_state(shared_state);
 
     // Rate Limiting Configuration
@@ -291,7 +328,10 @@ async fn main() -> Result<()> {
                 .allow_headers(Any)
         );
 
-    let addr = format!("{}:{}", cli.host, cli.port);
+    // Determine port and host: CLI > Config > Default
+    let port = cli.port.or(config_port).unwrap_or(8080);
+    let host = cli.host.or(config_host).unwrap_or_else(|| "127.0.0.1".to_string());
+    let addr = format!("{}:{}", host, port);
     
     println!();
     println!("╔══════════════════════════════════════════════════════════════════╗");
@@ -732,13 +772,17 @@ fn base_html(title: &str, content: &str, state: &AppState) -> String {
 <body>
     <header>
         <div class="container header-inner">
-            <a href="/" class="logo">📚 <span>Rustipedia</span></a>
+            <a href="/" class="logo">
+                <img src="/logo" alt="Logo" style="height: 32px; width: auto;">
+                <span>Rustipedia</span>
+            </a>
             <form action="/search" method="GET" class="search-form">
                 <input type="search" name="q" placeholder="Search articles..." class="search-input">
             </form>
             <nav>
                 <a href="/browse">Browse</a>
                 <a href="/random">Random</a>
+                <a href="/settings">Settings</a>
             </nav>
         </div>
     </header>
@@ -1138,3 +1182,357 @@ fn format_number(n: usize) -> String {
     result
 }
 
+
+#[derive(serde::Deserialize)]
+struct SettingsForm {
+    enabled: Option<String>,
+    frequency: String,
+    day: Option<String>,
+    hour: u8,
+    minute: u8,
+    language: String,
+}
+
+async fn settings_page(State(state): State<SharedState>) -> impl IntoResponse {
+    let state = state.read().await;
+    let html = settings_html(&state);
+    Html(base_html("Settings", &html, &state))
+}
+
+async fn update_settings(
+    State(state): State<SharedState>,
+    Form(form): Form<SettingsForm>,
+) -> impl IntoResponse {
+    let mut state = state.write().await;
+    
+    let schedule = match form.frequency.as_str() {
+        "Daily" => UpdateSchedule::Daily {
+            hour: form.hour,
+            minute: form.minute,
+        },
+        "Weekly" => {
+            let day = match form.day.as_deref() {
+                Some("Sunday") => Weekday::Sunday,
+                Some("Monday") => Weekday::Monday,
+                Some("Tuesday") => Weekday::Tuesday,
+                Some("Wednesday") => Weekday::Wednesday,
+                Some("Thursday") => Weekday::Thursday,
+                Some("Friday") => Weekday::Friday,
+                Some("Saturday") => Weekday::Saturday,
+                _ => Weekday::Sunday,
+            };
+            UpdateSchedule::Weekly {
+                day,
+                hour: form.hour,
+                minute: form.minute,
+            }
+        },
+        "Monthly" => UpdateSchedule::Monthly {
+            day: 1, // Simplified for now
+            hour: form.hour,
+            minute: form.minute,
+        },
+        _ => UpdateSchedule::Weekly { day: Weekday::Sunday, hour: 3, minute: 0 },
+    };
+
+    state.update_config.enabled = form.enabled.is_some();
+    state.update_config.schedule = schedule;
+    state.update_config.language = form.language;
+    
+    // Save config
+    if let Err(e) = state.update_config.save(UpdateConfig::config_path(&state.data_dir)) {
+        tracing::error!("Failed to save update config: {}", e);
+    }
+
+    // Redirect back to settings
+    (StatusCode::SEE_OTHER, [("Location", "/settings")])
+}
+
+async fn api_update_status(State(state): State<SharedState>) -> impl IntoResponse {
+    let state = state.read().await;
+    let manager = UpdateManager::load(&state.data_dir).unwrap_or_else(|_| {
+        UpdateManager::new(UpdateConfig::default())
+    });
+    let status = manager.get_status().await;
+    Json(status)
+}
+
+async fn api_trigger_update(State(state): State<SharedState>) -> impl IntoResponse {
+    let state = state.read().await;
+    
+    let data_dir = state.data_dir.clone();
+    
+    tokio::spawn(async move {
+        let manager = UpdateManager::load(&data_dir).unwrap_or_else(|_| {
+            UpdateManager::new(UpdateConfig::default())
+        });
+        let _ = manager.perform_update().await;
+    });
+
+    Json(serde_json::json!({ "status": "started" }))
+}
+
+async fn api_update_history(State(state): State<SharedState>) -> impl IntoResponse {
+    let state = state.read().await;
+    let manager = UpdateManager::load(&state.data_dir).unwrap_or_else(|_| {
+        UpdateManager::new(UpdateConfig::default())
+    });
+    
+    let history = manager.get_history(50).await.unwrap_or_default();
+    Json(history)
+}
+
+async fn logo_handler(State(state): State<SharedState>) -> impl IntoResponse {
+    let state = state.read().await;
+    let custom_logo_path = state.data_dir.join("custom_logo.png");
+    
+    if custom_logo_path.exists() {
+        match fs::read(&custom_logo_path) {
+            Ok(bytes) => return (
+                [(header::CONTENT_TYPE, "image/png")],
+                bytes
+            ).into_response(),
+            Err(e) => tracing::error!("Failed to read custom logo: {}", e),
+        }
+    }
+    
+    (
+        [(header::CONTENT_TYPE, "image/png")],
+        DEFAULT_LOGO.to_vec()
+    ).into_response()
+}
+
+async fn upload_logo(
+    State(state): State<SharedState>,
+    mut multipart: Multipart,
+) -> impl IntoResponse {
+    while let Some(field) = multipart.next_field().await.unwrap_or(None) {
+        let name = field.name().unwrap_or("").to_string();
+        if name == "logo" {
+            let data = match field.bytes().await {
+                Ok(data) => data,
+                Err(e) => return (StatusCode::BAD_REQUEST, format!("Failed to read upload: {}", e)).into_response(),
+            };
+            
+            if data.is_empty() {
+                continue;
+            }
+
+            let state = state.read().await;
+            let custom_logo_path = state.data_dir.join("custom_logo.png");
+            
+            if let Err(e) = fs::write(&custom_logo_path, data) {
+                return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to save logo: {}", e)).into_response();
+            }
+            
+            return (StatusCode::SEE_OTHER, [("Location", "/settings")]).into_response();
+        }
+    }
+    
+    (StatusCode::BAD_REQUEST, "No logo file provided").into_response()
+}
+
+fn settings_html(state: &AppState) -> String {
+    let config = &state.update_config;
+    
+    let freq_daily = matches!(config.schedule, UpdateSchedule::Daily { .. });
+    let freq_weekly = matches!(config.schedule, UpdateSchedule::Weekly { .. });
+    let freq_monthly = matches!(config.schedule, UpdateSchedule::Monthly { .. });
+    
+    let (hour, minute, day_str) = match &config.schedule {
+        UpdateSchedule::Daily { hour, minute } => (*hour, *minute, ""),
+        UpdateSchedule::Weekly { day, hour, minute } => (*hour, *minute, match day {
+            Weekday::Sunday => "Sunday",
+            Weekday::Monday => "Monday",
+            Weekday::Tuesday => "Tuesday",
+            Weekday::Wednesday => "Wednesday",
+            Weekday::Thursday => "Thursday",
+            Weekday::Friday => "Friday",
+            Weekday::Saturday => "Saturday",
+        }),
+        UpdateSchedule::Monthly { day: _, hour, minute } => (*hour, *minute, ""),
+        #[allow(unreachable_patterns)]
+        _ => (3, 0, ""),
+    };
+
+    format!(r#"
+        <div class="article">
+            <h1>⚙️ Settings</h1>
+            
+            <div style="margin-bottom: 48px; padding: 24px; background: var(--bg-primary); border-radius: var(--radius); border: 1px solid var(--border);">
+                <h2 style="margin-bottom: 16px; font-size: 1.25rem;">Branding</h2>
+                <div style="display: flex; gap: 24px; align-items: center; flex-wrap: wrap;">
+                    <div style="text-align: center;">
+                        <div style="margin-bottom: 8px; font-weight: 500; font-size: 0.9rem; color: var(--text-muted);">Current Logo</div>
+                        <img src="/logo" alt="Current Logo" style="height: 64px; width: auto; border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: white;">
+                    </div>
+                    <form action="/settings/logo" method="POST" enctype="multipart/form-data" style="flex: 1; min-width: 300px;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 500;">Upload Custom Logo</label>
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                            <input type="file" name="logo" accept="image/png,image/jpeg" class="search-input" style="padding: 8px; flex: 1;">
+                            <button type="submit" style="background: var(--accent); color: white; border: none; padding: 12px 24px; border-radius: 99px; font-size: 0.95rem; font-weight: 600; cursor: pointer;">Upload</button>
+                        </div>
+                        <p style="margin-top: 8px; font-size: 0.85rem; color: var(--text-muted);">Recommended: PNG or JPG, square aspect ratio.</p>
+                    </form>
+                </div>
+            </div>
+
+            <form action="/settings" method="POST" style="max-width: 600px;">
+                <div style="margin-bottom: 24px;">
+                    <label style="display: flex; align-items: center; gap: 12px; font-size: 1.1rem; font-weight: 500;">
+                        <input type="checkbox" name="enabled" {} style="width: 20px; height: 20px;">
+                        Enable Automatic Updates
+                    </label>
+                </div>
+
+                <div style="margin-bottom: 24px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 500;">Language Code</label>
+                    <input type="text" name="language" value="{}" class="search-input" style="width: 100%;">
+                </div>
+
+                <div style="margin-bottom: 24px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 500;">Update Frequency</label>
+                    <select name="frequency" class="search-input" style="width: 100%;" onchange="toggleDay(this.value)">
+                        <option value="Daily" {}>Daily</option>
+                        <option value="Weekly" {}>Weekly</option>
+                        <option value="Monthly" {}>Monthly</option>
+                    </select>
+                </div>
+
+                <div id="day-select" style="margin-bottom: 24px; display: {};">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 500;">Day of Week</label>
+                    <select name="day" class="search-input" style="width: 100%;">
+                        <option value="Sunday" {}>Sunday</option>
+                        <option value="Monday" {}>Monday</option>
+                        <option value="Tuesday" {}>Tuesday</option>
+                        <option value="Wednesday" {}>Wednesday</option>
+                        <option value="Thursday" {}>Thursday</option>
+                        <option value="Friday" {}>Friday</option>
+                        <option value="Saturday" {}>Saturday</option>
+                    </select>
+                </div>
+
+                <div style="display: flex; gap: 16px; margin-bottom: 32px;">
+                    <div style="flex: 1;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 500;">Hour (0-23)</label>
+                        <input type="number" name="hour" value="{}" min="0" max="23" class="search-input" style="width: 100%;">
+                    </div>
+                    <div style="flex: 1;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 500;">Minute (0-59)</label>
+                        <input type="number" name="minute" value="{}" min="0" max="59" class="search-input" style="width: 100%;">
+                    </div>
+                </div>
+
+                <button type="submit" style="background: var(--accent); color: white; border: none; padding: 12px 24px; border-radius: 99px; font-size: 1rem; font-weight: 600; cursor: pointer;">
+                    Save Settings
+                </button>
+            </form>
+
+            <hr style="margin: 48px 0; border: none; border-top: 1px solid var(--border);">
+
+            <h2>Update Status</h2>
+            <div id="update-status" style="margin-top: 16px; padding: 24px; background: var(--bg-primary); border-radius: var(--radius); border: 1px solid var(--border);">
+                Loading status...
+            </div>
+            
+            <button onclick="triggerUpdate()" style="margin-top: 16px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); padding: 12px 24px; border-radius: 99px; font-size: 1rem; font-weight: 600; cursor: pointer;">
+                Check for Updates Now
+            </button>
+
+            <hr style="margin: 48px 0; border: none; border-top: 1px solid var(--border);">
+
+            <h2>Update History</h2>
+            <div id="update-history" style="margin-top: 16px; padding: 24px; background: var(--bg-primary); border-radius: var(--radius); border: 1px solid var(--border); max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.9rem;">
+                Loading history...
+            </div>
+
+            <script>
+                function toggleDay(freq) {{
+                    const daySelect = document.getElementById('day-select');
+                    daySelect.style.display = freq === 'Weekly' ? 'block' : 'none';
+                }}
+
+                async function loadStatus() {{
+                    const res = await fetch('/api/update/status');
+                    const status = await res.json();
+                    const el = document.getElementById('update-status');
+                    
+                    let html = `
+                        <div style="display: grid; gap: 8px;">
+                            <div><strong>Status:</strong> ${{status.current_status}}</div>
+                            <div><strong>Last Check:</strong> ${{status.last_check || 'Never'}}</div>
+                            <div><strong>Last Update:</strong> ${{status.last_update || 'Never'}}</div>
+                        </div>
+                    `;
+                    
+                    if (status.error_message) {{
+                        html += `<div style="color: #ef4444; margin-top: 8px;">Error: ${{status.error_message}}</div>`;
+                    }}
+                    
+                    if (status.progress > 0 && status.progress < 100) {{
+                        html += `
+                            <div style="margin-top: 12px; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden;">
+                                <div style="height: 100%; width: ${{status.progress}}%; background: var(--accent);"></div>
+                            </div>
+                            <div style="text-align: right; font-size: 0.9rem; margin-top: 4px;">${{status.progress.toFixed(1)}}%</div>
+                        `;
+                    }}
+                    
+                    el.innerHTML = html;
+                }}
+
+                async function loadHistory() {{
+                    try {{
+                        const res = await fetch('/api/update/history');
+                        const history = await res.json();
+                        const el = document.getElementById('update-history');
+                        
+                        if (history.length === 0) {{
+                            el.innerHTML = '<div style="color: var(--text-muted);">No update history found.</div>';
+                            return;
+                        }}
+                        
+                        el.innerHTML = history.map(line => `<div>${{line}}</div>`).join('');
+                    }} catch (e) {{
+                        console.error('Failed to load history:', e);
+                    }}
+                }}
+
+                async function triggerUpdate() {{
+                    if (!confirm('Are you sure you want to start an update check?')) return;
+                    
+                    try {{
+                        const res = await fetch('/api/update/trigger', {{ method: 'POST' }});
+                        const data = await res.json();
+                        alert('Update started!');
+                        loadStatus();
+                    }} catch (e) {{
+                        alert('Failed to trigger update: ' + e);
+                    }}
+                }}
+
+                // Initial load
+                loadStatus();
+                loadHistory();
+                // Poll every 5 seconds
+                setInterval(loadStatus, 5000);
+            </script>
+        </div>
+    "#,
+        if config.enabled { "checked" } else { "" },
+        config.language,
+        if freq_daily { "selected" } else { "" },
+        if freq_weekly { "selected" } else { "" },
+        if freq_monthly { "selected" } else { "" },
+        if freq_weekly { "block" } else { "none" },
+        if day_str == "Sunday" { "selected" } else { "" },
+        if day_str == "Monday" { "selected" } else { "" },
+        if day_str == "Tuesday" { "selected" } else { "" },
+        if day_str == "Wednesday" { "selected" } else { "" },
+        if day_str == "Thursday" { "selected" } else { "" },
+        if day_str == "Friday" { "selected" } else { "" },
+        if day_str == "Saturday" { "selected" } else { "" },
+        hour,
+        minute
+    )
+}

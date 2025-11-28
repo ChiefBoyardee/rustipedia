@@ -1,15 +1,22 @@
-//! - Store articles in a searchable format
+//! Rustipedia - Your personal Wikipedia server
+//! 
+//! Download and host Wikipedia locally with full-text search.
+
 pub mod article;
 pub mod downloader;
 pub mod parser;
 pub mod search;
 pub mod config;
+pub mod update_config;
+pub mod update_manager;
 
 pub use article::Article;
 pub use downloader::WikiDownloader;
 pub use parser::WikiParser;
 pub use search::SearchIndex;
 pub use config::Config;
+pub use update_config::{UpdateConfig, UpdateSchedule, UpdateMode, Weekday};
+pub use update_manager::{UpdateManager, UpdateStatus, Status, UpdateProgress};
 
 /// Supported Wikipedia languages/editions
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

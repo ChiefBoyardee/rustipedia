@@ -1,4 +1,4 @@
-# Rustipedia 📚
+# <img src="src/bin/Logo.png" alt="Rustipedia Logo" width="50" height="50" style="vertical-align: middle;"> Rustipedia 📚
 
 > Your personal Wikipedia server - Access the world's knowledge offline, anytime, anywhere.
 
@@ -126,6 +126,23 @@ rustipedia-serve --data ./my-wiki
 # Bind to all network interfaces (access from other devices)
 rustipedia-serve --host 0.0.0.0
 ```
+
+---
+
+### Step 4: Configure Auto-Updates (Optional)
+
+Rustipedia can automatically keep your Wikipedia data up-to-date. You can configure this during installation or later via the web interface.
+
+**Features:**
+- 📅 **Flexible Scheduling**: Daily, Weekly, or Monthly updates
+- 🕒 **Custom Timing**: Choose the exact hour and day
+- 🌐 **Web Interface**: Manage settings and view update history at `/settings`
+- 🚦 **Bandwidth Control**: Limit download speed to save bandwidth
+- 🔄 **Automatic Retries**: Robust error handling for unreliable connections
+
+**How to Configure:**
+1. **During Setup**: The `rustipedia-setup` wizard will ask if you want to enable auto-updates.
+2. **Web Interface**: Navigate to `http://localhost:8080/settings` to change settings, trigger manual updates, or view logs.
 
 ---
 
@@ -287,21 +304,6 @@ rustipedia-download --lang en --build-index=false
 # Build the index later when you have more resources
 rustipedia-download index --data ./wikipedia
 ```
-
-### 🔧 Advanced: Link Validation
-
-Rustipedia includes a link validator to check for broken internal links:
-
-```bash
-# Validate all links in your Wikipedia data
-rustipedia-link-validator --data ./wikipedia
-
-# This will identify articles that link to non-existent pages
-```
-
----
-
-## 🛠️ Building from Source
 
 If you want to build Rustipedia from source or contribute to development:
 

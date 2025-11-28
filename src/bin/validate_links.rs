@@ -12,7 +12,7 @@ use clap::Parser;
 use regex::Regex;
 use once_cell::sync::Lazy;
 
-use rustipedia::{Article, WikiParser};
+use rustipedia::Article;
 
 static LINK_PIPE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\[\[([^|\]]+)\|([^\]]+)\]\]").unwrap());
 

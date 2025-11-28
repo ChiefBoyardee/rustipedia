@@ -318,7 +318,7 @@ fn prune_articles(data_dir: &PathBuf) -> Result<()> {
     use std::collections::HashSet;
     use std::fs::File;
     use std::io::{BufRead, BufReader, Write, BufWriter};
-    use rustipedia::{Article, WikiParser};
+    use rustipedia::Article;
     use indicatif::{ProgressBar, ProgressStyle};
 
     let articles_path = data_dir.join("articles.jsonl");

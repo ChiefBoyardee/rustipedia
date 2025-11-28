@@ -1,6 +1,6 @@
 [package]
 name = "rustipedia"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 description = "Download and host Wikipedia locally with full-text search - Your personal offline Wikipedia server"
 authors = ["ChiefBoyardee"]
@@ -27,6 +27,10 @@ path = "src/bin/validate_links.rs"
 name = "rustipedia-setup"
 path = "src/bin/setup.rs"
 
+[[bin]]
+name = "rustipedia-update-daemon"
+path = "src/bin/update_daemon.rs"
+
 [lib]
 name = "rustipedia"
 path = "src/lib.rs"
@@ -42,7 +46,7 @@ tokio = { version = "1.35", features = ["full"] }
 reqwest = { version = "0.12", features = ["stream", "blocking"] }
 
 # Web server
-axum = { version = "0.7", features = ["macros"] }
+axum = { version = "0.7", features = ["macros", "multipart"] }
 tower = "0.4"
 tower-http = { version = "0.5", features = ["fs", "cors", "set-header", "timeout"] }
 

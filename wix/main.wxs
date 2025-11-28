@@ -70,6 +70,17 @@
                             DiskId='1'
                             Source='target\release\rustipedia-serve.exe'
                             KeyPath='yes'/>
+                        <ServiceInstall
+                            Id="ServiceInstaller"
+                            Type="ownProcess"
+                            Name="rustipedia-serve"
+                            DisplayName="Rustipedia Local Wikipedia Server"
+                            Description="Hosts your local Wikipedia mirror."
+                            Start="demand"
+                            Account="LocalSystem"
+                            ErrorControl="normal"
+                            Arguments="--data &quot;[APPLICATIONFOLDER]wikipedia&quot;" />
+                        <ServiceControl Id="ServiceControl" Stop="both" Remove="uninstall" Name="rustipedia-serve" Wait="yes" />
                     </Component>
                     <Component Id='binary1' Guid='*' Win64='$(var.Win64)'>
                         <File
