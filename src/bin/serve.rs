@@ -15,10 +15,11 @@
 //! ```
 
 use std::collections::HashMap;
-use std::fs::{self, File};
-use std::io::{BufRead, BufReader};
+use std::fs::{self, File, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::ffi::OsString;
 
 use anyhow::Result;
 use axum::{
@@ -40,7 +41,31 @@ use rand::Rng;
 
 use rustipedia::{Article, SearchIndex, WikiLanguage, UpdateConfig, UpdateSchedule, Weekday, UpdateManager};
 
+// Windows service support
+#[cfg(windows)]
+use std::sync::Mutex;
+#[cfg(windows)]
+use std::time::Duration;
+#[cfg(windows)]
+use windows_service::{
+    define_windows_service,
+    service::{
+        ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
+        ServiceType,
+    },
+    service_control_handler::{self, ServiceControlHandlerResult},
+    service_dispatcher,
+};
+
 const DEFAULT_LOGO: &[u8] = include_bytes!("Logo.png");
+
+// Global shutdown flag for Windows service
+#[cfg(windows)]
+static SHUTDOWN_FLAG: Mutex<bool> = Mutex::new(false);
+
+// Service name for Windows
+#[cfg(windows)]
+const SERVICE_NAME: &str = "rustipedia-serve";
 
 #[derive(Parser)]
 #[command(name = "rustipedia-serve")]
@@ -246,23 +271,196 @@ impl AppState {
     }
 }
 
+
 type SharedState = Arc<RwLock<AppState>>;
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let cli = Cli::parse();
+// Main entry point - detects if running as service or CLI
+fn main() -> Result<()> {
+    #[cfg(windows)]
+    {
+        // Try to run as Windows service first
+        if let Err(_) = service_dispatcher::start(SERVICE_NAME, ffi_service_main) {
+            // If that fails, we're probably running as CLI
+            run_cli_mode()
+        } else {
+            Ok(())
+        }
+    }
+    
+    #[cfg(not(windows))]
+    {
+        run_cli_mode()
+    }
+}
 
-    // Initialize logging
-    let filter = if cli.verbose {
-        EnvFilter::new("rustipedia_serve=debug,tower_http=debug,info")
-    } else {
-        EnvFilter::new("rustipedia_serve=info,warn")
+// CLI mode entry point
+fn run_cli_mode() -> Result<()> {
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        run_server(None).await
+    })
+}
+
+// Windows service entry point
+#[cfg(windows)]
+define_windows_service!(ffi_service_main, service_main);
+
+#[cfg(windows)]
+fn service_main(arguments: Vec<OsString>) {
+    if let Err(e) = run_service(arguments) {
+        // Log error to Windows Event Log or file
+        let _ = log_service_error(&format!("Service error: {}", e));
+    }
+}
+
+#[cfg(windows)]
+fn log_service_error(msg: &str) -> Result<()> {
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("C:\\ProgramData\\Rustipedia\\service_error.log")?;
+    writeln!(file, "[{}] {}", chrono::Local::now(), msg)?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn run_service(_arguments: Vec<OsString>) -> Result<()> {
+    use std::sync::mpsc;
+    
+    let (shutdown_tx, shutdown_rx) = mpsc::channel();
+    
+    // Define service control handler
+    let event_handler = move |control_event| -> ServiceControlHandlerResult {
+        match control_event {
+            ServiceControl::Stop | ServiceControl::Interrogate => {
+                let _ = shutdown_tx.send(());
+                ServiceControlHandlerResult::NoError
+            }
+            _ => ServiceControlHandlerResult::NotImplemented,
+        }
     };
     
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_target(false)
-        .init();
+    // Register service control handler
+    let status_handle = service_control_handler::register(SERVICE_NAME, event_handler)?;
+    
+    // Tell Windows we're starting
+    status_handle.set_service_status(ServiceStatus {
+        service_type: ServiceType::OWN_PROCESS,
+        current_state: ServiceState::StartPending,
+        controls_accepted: ServiceControlAccept::empty(),
+        exit_code: ServiceExitCode::Win32(0),
+        checkpoint: 0,
+        wait_hint: Duration::from_secs(5),
+        process_id: None,
+    })?;
+    
+    // Start the server in a separate thread
+    let server_handle = std::thread::spawn(|| {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            run_server(Some("Service mode")).await
+        })
+    });
+    
+    // Tell Windows we're running
+    status_handle.set_service_status(ServiceStatus {
+        service_type: ServiceType::OWN_PROCESS,
+        current_state: ServiceState::Running,
+        controls_accepted: ServiceControlAccept::STOP,
+        exit_code: ServiceExitCode::Win32(0),
+        checkpoint: 0,
+        wait_hint: Duration::default(),
+        process_id: None,
+    })?;
+    
+    // Wait for shutdown signal
+    let _ = shutdown_rx.recv();
+    
+    // Tell Windows we're stopping
+    status_handle.set_service_status(ServiceStatus {
+        service_type: ServiceType::OWN_PROCESS,
+        current_state: ServiceState::StopPending,
+        controls_accepted: ServiceControlAccept::empty(),
+        exit_code: ServiceExitCode::Win32(0),
+        checkpoint: 0,
+        wait_hint: Duration::from_secs(5),
+        process_id: None,
+    })?;
+    
+    // Set shutdown flag
+    *SHUTDOWN_FLAG.lock().unwrap() = true;
+    
+    // Wait for server to stop (with timeout)
+    let _ = server_handle.join();
+    
+    // Tell Windows we've stopped
+    status_handle.set_service_status(ServiceStatus {
+        service_type: ServiceType::OWN_PROCESS,
+        current_state: ServiceState::Stopped,
+        controls_accepted: ServiceControlAccept::empty(),
+        exit_code: ServiceExitCode::Win32(0),
+        checkpoint: 0,
+        wait_hint: Duration::default(),
+        process_id: None,
+    })?;
+    
+    Ok(())
+}
+
+// Server logic - can be called from either service or CLI mode
+async fn run_server(mode: Option<&str>) -> Result<()> {
+    let cli = Cli::parse();
+
+    // Initialize logging - for service mode, log to file
+    let is_service = mode.is_some();
+    
+    if is_service {
+        // Service mode - log to file only
+        // Create log directory if needed
+        #[cfg(windows)]
+        {
+            let _ = std::fs::create_dir_all("C:\\ProgramData\\Rustipedia");
+        }
+        
+        let log_path = if cfg!(windows) {
+            "C:\\ProgramData\\Rustipedia\\server.log"
+        } else {
+            "server.log"
+        };
+        
+        let log_file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_path)
+            .unwrap_or_else(|_| {
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open("server.log")
+                    .unwrap()
+            });
+        
+        let filter = EnvFilter::new("rustipedia_serve=info,warn");
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_target(false)
+            .with_writer(std::sync::Arc::new(log_file))
+            .init();
+            
+        tracing::info!("Starting in {}", mode.unwrap_or("unknown mode"));
+    } else {
+        // CLI mode - log to stdout
+        let filter = if cli.verbose {
+            EnvFilter::new("rustipedia_serve=debug,tower_http=debug,info")
+        } else {
+            EnvFilter::new("rustipedia_serve=info,warn")
+        };
+        
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_target(false)
+            .init();
+    }
 
     // Load data
     let state = AppState::load(&cli.data)?;
@@ -333,21 +531,51 @@ async fn main() -> Result<()> {
     let host = cli.host.or(config_host).unwrap_or_else(|| "127.0.0.1".to_string());
     let addr = format!("{}:{}", host, port);
     
-    println!();
-    println!("╔══════════════════════════════════════════════════════════════════╗");
-    println!("║                     RUSTIPEDIA                                    ║");
-    println!("╠══════════════════════════════════════════════════════════════════╣");
-    println!("║  Server running at: http://{}                          ", addr);
-    println!("║  Data directory:    {:?}                                ", cli.data);
-    println!("╚══════════════════════════════════════════════════════════════════╝");
-    println!();
-    println!("Press Ctrl+C to stop the server");
+    if !is_service {
+        println!();
+        println!("╔══════════════════════════════════════════════════════════════════╗");
+        println!("║                     RUSTIPEDIA                                    ║");
+        println!("╠══════════════════════════════════════════════════════════════════╣");
+        println!("║  Server running at: http://{}                          ", addr);
+        println!("║  Data directory:    {:?}                                ", cli.data);
+        println!("╚══════════════════════════════════════════════════════════════════╝");
+        println!();
+        println!("Press Ctrl+C to stop the server");
+    } else {
+        tracing::info!("Server starting at http://{}", addr);
+        tracing::info!("Data directory: {:?}", cli.data);
+    }
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>()).await?;
+    
+    // Run server with graceful shutdown for service mode
+    #[cfg(windows)]
+    if is_service {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>()
+        )
+        .with_graceful_shutdown(async {
+            loop {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                if *SHUTDOWN_FLAG.lock().unwrap() {
+                    break;
+                }
+            }
+        })
+        .await?;
+    } else {
+        axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>()).await?;
+    }
+    
+    #[cfg(not(windows))]
+    {
+        axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>()).await?;
+    }
 
     Ok(())
 }
+
 
 // ============================================================================
 // HTML Templates

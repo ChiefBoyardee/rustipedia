@@ -1,26 +1,16 @@
 <?xml version='1.0' encoding='windows-1252'?>
 <!--
-  Copyright (C) 2017 Christopher R. Field.
-
-  Licensed under the Apache License, Version 2.0 (the "License");
-  you may not use this file except in compliance with the License.
-  You may obtain a copy of the License at
-
-  http://www.apache.org/licenses/LICENSE-2.0
-
-  Unless required by applicable law or agreed to in writing, software
-  distributed under the License is distributed on an "AS IS" BASIS,
-  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  See the License for the specific language governing permissions and
-  limitations under the License.
+  Rustipedia Windows Installer Configuration
+  
+  Features:
+  - Installs binaries to Program Files
+  - Creates persistent data directories in ProgramData
+  - Configures Windows service with correct arguments
+  - Auto-starts service after installation (optional)
+  - Migrates data from old installations
+  - Preserves data across upgrades and uninstalls
 -->
 
-<!--
-  Please do not remove these pre-processor If-Else blocks. These are used with
-  the `cargo wix` subcommand to automatically determine the installation
-  destination for 32-bit versus 64-bit installers. Removal of these lines will
-  cause installation errors.
--->
 <?if $(var.Platform) = x64 ?>
     <?define Win64 = "yes" ?>
     <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
@@ -29,7 +19,7 @@
   <?define PlatformProgramFilesFolder = "ProgramFilesFolder" ?>
 <?endif ?>
 
-<Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
 
     <Product
         Id='*'
@@ -51,18 +41,34 @@
             SummaryCodepage='1252'
             Platform='$(var.Platform)'/>
 
+        <!-- Enable upgrade/repair/remove functionality -->
         <MajorUpgrade
             Schedule='afterInstallInitialize'
+            AllowSameVersionUpgrades='yes'
             DowngradeErrorMessage='A newer version of [ProductName] is already installed. Setup will now exit.'/>
 
         <Media Id='1' Cabinet='media1.cab' EmbedCab='yes' DiskPrompt='CD-ROM #1'/>
         <Property Id='DiskPrompt' Value='Rustipedia Installation [1]'/>
 
+        <!-- Set default Wikipedia data directory to ProgramData -->
+        <Property Id="WIKIPEDIADATADIR" Value="[CommonAppDataFolder]Rustipedia\wikipedia"/>
+        
+        <!-- Auto-start service checkbox - enabled by default -->
+        <Property Id="AUTOSTART_SERVICE" Value="1"/>
+        
+        <!-- Detect existing data in old Program Files location -->
+        <Property Id="OLDDATAEXISTS">
+            <DirectorySearch Id="FindOldData" Path="[ProgramFilesFolder]Rustipedia\wikipedia">
+                <FileSearch Name="articles.jsonl"/>
+            </DirectorySearch>
+        </Property>
+
         <Directory Id='TARGETDIR' Name='SourceDir'>
+            <!-- Application binaries in Program Files -->
             <Directory Id='$(var.PlatformProgramFilesFolder)' Name='PFiles'>
                 <Directory Id='APPLICATIONFOLDER' Name='Rustipedia'>
                     
-                    <!-- Binaries -->
+                    <!-- Main server binary with service configuration -->
                     <Component Id='binary0' Guid='*' Win64='$(var.Win64)'>
                         <File
                             Id='exe0'
@@ -70,18 +76,22 @@
                             DiskId='1'
                             Source='target\release\rustipedia-serve.exe'
                             KeyPath='yes'/>
+                        <!-- Windows Service - Auto start, Port 3000, ProgramData location -->
                         <ServiceInstall
                             Id="ServiceInstaller"
                             Type="ownProcess"
                             Name="rustipedia-serve"
                             DisplayName="Rustipedia Local Wikipedia Server"
-                            Description="Hosts your local Wikipedia mirror."
-                            Start="demand"
+                            Description="Hosts your local Wikipedia mirror. Access at http://localhost:3000"
+                            Start="auto"
                             Account="LocalSystem"
                             ErrorControl="normal"
-                            Arguments="--data &quot;[APPLICATIONFOLDER]wikipedia&quot;" />
-                        <ServiceControl Id="ServiceControl" Stop="both" Remove="uninstall" Name="rustipedia-serve" Wait="yes" />
+                            Arguments="--data &quot;[WIKIPEDIADATADIR]&quot; --port 3000"/>
+                        <!-- Stop service on upgrade/uninstall, remove on uninstall -->
+                        <ServiceControl Id="ServiceControlStop" Stop="both" Remove="uninstall" Name="rustipedia-serve" Wait="yes"/>
                     </Component>
+                    
+                    <!-- Download tool -->
                     <Component Id='binary1' Guid='*' Win64='$(var.Win64)'>
                         <File
                             Id='exe1'
@@ -90,6 +100,8 @@
                             Source='target\release\rustipedia-download.exe'
                             KeyPath='yes'/>
                     </Component>
+                    
+                    <!-- Setup wizard -->
                     <Component Id='binary2' Guid='*' Win64='$(var.Win64)'>
                         <File
                             Id='exe2'
@@ -98,6 +110,8 @@
                             Source='target\release\rustipedia-setup.exe'
                             KeyPath='yes'/>
                     </Component>
+                    
+                    <!-- Link validator -->
                     <Component Id='binary3' Guid='*' Win64='$(var.Win64)'>
                         <File
                             Id='exe3'
@@ -107,7 +121,7 @@
                             KeyPath='yes'/>
                     </Component>
 
-                    <!-- Add to PATH -->
+                    <!-- Add to system PATH -->
                     <Component Id='Path' Guid='74100918-6576-4702-8610-185011012345' KeyPath='yes' Win64='$(var.Win64)'>
                         <Environment
                             Id='PATH'
@@ -121,11 +135,47 @@
                 </Directory>
             </Directory>
             
+            <!-- ProgramData folder for persistent Wikipedia data -->
+            <Directory Id="CommonAppDataFolder">
+                <Directory Id="ManufacturerFolder" Name="Rustipedia">
+                    <!-- Wikipedia data folder - PERMANENT (survives uninstall/upgrade) -->
+                    <Directory Id="WIKIPEDIADATAFOLDER" Name="wikipedia">
+                        <Component Id="WikipediaDataFolder" Guid="9F8C7A3E-1234-4567-89AB-CDEF01234567" Permanent="yes" NeverOverwrite="yes">
+                            <CreateFolder/>
+                        </Component>
+                    </Directory>
+                    <!-- Config folder - PERMANENT -->
+                    <Directory Id="CONFIGFOLDER" Name="config">
+                        <Component Id="ConfigFolder" Guid="8E7D6A2F-2345-5678-9ABC-DEF012345678" Permanent="yes" NeverOverwrite="yes">
+                            <CreateFolder/>
+                        </Component>
+                    </Directory>
+                    <!-- Logs folder -->
+                    <Directory Id="LOGSFOLDER" Name="logs">
+                        <Component Id="LogsFolder" Guid="7D6C5B1E-3456-6789-ABCD-EF0123456789" Permanent="yes">
+                            <CreateFolder/>
+                        </Component>
+                    </Directory>
+                    <!-- Registry entries to track installation -->
+                    <Component Id="RegistryEntries" Guid="6C5B4A0D-4567-789A-BCDE-F01234567890">
+                        <RegistryKey Root="HKLM" Key="Software\Rustipedia">
+                            <RegistryValue Name="DataDirectory" Type="string" Value="[WIKIPEDIADATADIR]" KeyPath="yes"/>
+                            <RegistryValue Name="ConfigDirectory" Type="string" Value="[CONFIGFOLDER]"/>
+                            <RegistryValue Name="InstallLocation" Type="string" Value="[APPLICATIONFOLDER]"/>
+                            <RegistryValue Name="Version" Type="string" Value="$(var.Version)"/>
+                            <RegistryValue Name="Port" Type="string" Value="3000"/>
+                        </RegistryKey>
+                    </Component>
+                </Directory>
+            </Directory>
+            
+            <!-- Start Menu shortcuts -->
             <Directory Id="ProgramMenuFolder">
                 <Directory Id="ApplicationProgramsFolder" Name="Rustipedia"/>
             </Directory>
         </Directory>
 
+        <!-- Start Menu shortcuts -->
         <DirectoryRef Id="ApplicationProgramsFolder">
             <Component Id="ApplicationShortcut" Guid="*">
                 <Shortcut Id="ApplicationStartMenuShortcut" 
@@ -138,10 +188,33 @@
             </Component>
         </DirectoryRef>
 
+        <!-- Custom action: Migrate data from old location -->
+        <CustomAction Id="MigrateData" 
+                      Directory="APPLICATIONFOLDER"
+                      ExeCommand="cmd.exe /c &quot;if exist &quot;[ProgramFilesFolder]Rustipedia\wikipedia\articles.jsonl&quot; (if not exist &quot;[CommonAppDataFolder]Rustipedia\wikipedia\articles.jsonl&quot; (copy /Y &quot;[ProgramFilesFolder]Rustipedia\wikipedia\articles.jsonl&quot; &quot;[CommonAppDataFolder]Rustipedia\wikipedia\&quot; &amp;&amp; xcopy /E /I /Y &quot;[ProgramFilesFolder]Rustipedia\wikipedia\search_index&quot; &quot;[CommonAppDataFolder]Rustipedia\wikipedia\search_index&quot;))&quot;"
+                      Execute="deferred"
+                      Impersonate="no"
+                      Return="ignore"/>
+        
+        <!-- Custom action: Start service after installation -->
+        <CustomAction Id="StartService"
+                      Directory="APPLICATIONFOLDER"
+                      ExeCommand="cmd.exe /c &quot;net start rustipedia-serve&quot;"
+                      Execute="deferred"
+                      Impersonate="no"
+                      Return="ignore"/>
+        
+        <!-- Schedule custom actions -->
+        <InstallExecuteSequence>
+            <Custom Action="MigrateData" After="InstallFiles">NOT Installed</Custom>
+            <Custom Action="StartService" After="InstallServices">AUTOSTART_SERVICE AND NOT Installed</Custom>
+        </InstallExecuteSequence>
+
+        <!-- Main feature -->
         <Feature
             Id='Binaries'
-            Title='Application'
-            Description='Installs all binaries and the setup tool.'
+            Title='Rustipedia Application'
+            Description='Installs the Rustipedia local Wikipedia server.'
             Level='1'
             ConfigurableDirectory='APPLICATIONFOLDER'
             AllowAdvertise='no'
@@ -154,14 +227,20 @@
             <ComponentRef Id='binary3'/>
             <ComponentRef Id='Path'/>
             <ComponentRef Id='ApplicationShortcut'/>
+            <ComponentRef Id='WikipediaDataFolder'/>
+            <ComponentRef Id='ConfigFolder'/>
+            <ComponentRef Id='LogsFolder'/>
+            <ComponentRef Id='RegistryEntries'/>
         </Feature>
 
         <SetProperty Id='ARPINSTALLLOCATION' Value='[APPLICATIONFOLDER]' After='CostFinalize'/>
-
         <Property Id='ARPHELPLINK' Value='https://github.com/ChiefBoyardee/rustipedia'/>
         
+        <!-- UI Configuration -->
         <UI>
-            <UIRef Id='WixUI_InstallDir'/>
+            <UIRef Id='WixUI_FeatureTree'/>
+            
+            <!-- Show auto-start checkbox on exit dialog -->
             <Publish Dialog='ExitDialog'
                 Control='Finish' 
                 Event='DoAction' 
@@ -169,9 +248,13 @@
         </UI>
         
         <Property Id='WIXUI_INSTALLDIR' Value='APPLICATIONFOLDER'/>
-        <Property Id='WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT' Value='Launch Setup Wizard' />
+        <Property Id='WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT' Value='Start Rustipedia service now' />
         <Property Id='WIXUI_EXITDIALOGOPTIONALCHECKBOX' Value='1' />
 
+        <!-- MIT License for EULA dialog -->
+        <WixVariable Id="WixUILicenseRtf" Value="wix\License.rtf" />
+
+        <!-- Launch setup wizard after install -->
         <Property Id='WixShellExecTarget' Value='[#exe2]' />
         <CustomAction Id='LaunchApplication' BinaryKey='WixCA' DllEntry='WixShellExec' Impersonate='yes' />
 
